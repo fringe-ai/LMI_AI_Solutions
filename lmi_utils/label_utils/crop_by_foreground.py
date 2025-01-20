@@ -12,6 +12,22 @@ logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+
+def crop_kp(bbox, shape):
+    x1,y1,x2,y2 = bbox
+    w,h = x2-x1, y2-y1
+    x,y = shape.x, shape.y
+    x -= x1
+    y -= y1
+    
+    valid = True
+    if x<0 or x>=w or y<0 or y>=h:
+        valid = False
+        logger.warning(f'in {shape.im_name}, keypoint {x:.4f},{y:.4f} is out of the foreground bbox: {x1:.4f},{y1:.4f},{x2:.4f},{y2:.4f}. skip')
+    
+    return x,y,valid
+
+
 def crop_bbox(bbox1, bbox2):
     crop_x1, crop_y1, crop_x2, crop_y2 = bbox1
     target_x1, target_y1, target_x2, target_y2 = bbox2
@@ -58,9 +74,8 @@ def main():
     
     ap.add_argument('--path_imgs', '-i', required=True, help='the path of a image folder')
     ap.add_argument('--path_csv', default='labels.csv', help='[optinal] the path of a csv file that corresponds to path_imgs, default="labels.csv" in path_imgs')
-    ap.add_argument('--class_map_json', help='[optinal] the class map json file')
     ap.add_argument('--path_out', '-o', required=True, help='the output path')
-    ap.add_argument('--target_classes',default='all', help='[optional] the comma separated target classes, default=all')
+    ap.add_argument('--target_classes',required=True, help='the comma separated target classes to crop')
     args = vars(ap.parse_args())
     path_imgs = args['path_imgs']
     path_csv = args['path_csv'] if args['path_csv']!='labels.csv' else os.path.join(path_imgs, args['path_csv'])
@@ -100,6 +115,10 @@ def main():
         logger.info(f'processing {fname}')
         
         image = cv2.imread(os.path.join(path_imgs, fname))
+        if image is None:
+            logger.warning(f'failed to read {fname}, skip')
+            continue
+        
         H,W = image.shape[:2]
         for shape in fname_to_shapes[fname]:
             
@@ -139,6 +158,23 @@ def main():
                         fullpath=os.path.join(args['path_out'], updated_fname)
                     )
                 )
+                
+            if isinstance(shape, Keypoint):
+                x,y,is_valid = crop_kp(foreground_shapes[fname]['foreground'], shape)
+                if not is_valid:
+                    continue
+                annots[updated_fname].append(
+                    Keypoint(
+                        x=x,
+                        y=y,
+                        confidence=shape.confidence,
+                        category=shape.category,
+                        im_name=updated_fname,
+                        fullpath=os.path.join(args['path_out'], updated_fname)
+                    )
+                )
+                
+                
         # save the cropped image
         x1,y1,x2,y2 = foreground_shapes[fname]['foreground']
         cropped_image = image[y1:y2, x1:x2]
