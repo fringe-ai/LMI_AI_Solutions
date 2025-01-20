@@ -203,7 +203,8 @@ def convert_to_txt(fname_to_shapes, target_classes, is_seg=False, is_convert=Fal
                     new_rows[key].extend(kp)
             if not hit:
                 raise Exception(f'key point ({x},{y}) is not in any bbox. Fix it.')
-                    
+        if len(new_rows) == 0 and len(rows) == 0:
+            continue
         txt_name = fname.replace('.png','.txt').replace('.jpg','.txt')
         fname_to_rows[txt_name] = new_rows.values() if len(kps) else rows
         if len(kps):
@@ -213,8 +214,6 @@ def convert_to_txt(fname_to_shapes, target_classes, is_seg=False, is_convert=Fal
                 n_pts = int(n_pts)
             elif n_pts!=(len(r)-5)/2:
                 raise Exception(f'Inconsistent number of key points: {n_pts} and {(len(r)-5)/2}')
-    for k in del_names:
-        fname_to_shapes.pop(k)
     return fname_to_rows, ignore_cls, n_pts
 
 
@@ -260,12 +259,18 @@ def copy_images_in_folder(path_img, path_out, fnames=None):
         path_out(str): the path of output folder
     """
     os.makedirs(path_out, exist_ok=True)
+    logger.info(f'Number of images {len(fnames)}')
     if not fnames:
         l = glob.glob(os.path.join(path_img, '*.png')) + glob.glob(os.path.join(path_img, '*.jpg'))
     else:
         l = [f"{path_img}/{fname}" for fname in fnames]
     for f in l:
-        shutil.copy(f, path_out)
+        if os.path.exists(f+'.png'):
+            shutil.copy(f+'.png', path_out)
+        elif os.path.exists(f+'.jpg'):
+            shutil.copy(f+'.jpg', path_out)
+        else:
+            shutil.copy(f, path_out)
 
 
 if __name__ =='__main__':
@@ -357,4 +362,4 @@ if __name__ =='__main__':
         copy_images_in_folder(path_imgs, path_img_out)
     else:
         logger.info('skip background images')
-        copy_images_in_folder(path_imgs, path_img_out, fname_to_shapes.keys())
+        copy_images_in_folder(path_imgs, path_img_out, list(map(lambda x: x.replace('.txt',''), fname_to_rows.keys())))
