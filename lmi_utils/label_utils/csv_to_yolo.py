@@ -186,12 +186,13 @@ def convert_to_txt(fname_to_shapes, target_classes, is_seg=False, is_convert=Fal
         new_rows = {}
         for kp in kps:
             x,y = kp
+            x,y = x*W, y*H
             hit = 0
             for row in rows:
                 if len(row)!=5:
                     logging.warning(f'key point can only be assign to a bbox, but got {len(row)} values in a row. Skip it.')
                     continue
-                xc,yc,w,h = row[1:]
+                xc,yc,w,h = np.array(row[1:]*np.array([W,H,W,H]))
                 x1,y1 = xc-w/2, yc-h/2
                 x2,y2 = xc+w/2, yc+h/2
                 if x1<=x<=x2 and y1<=y<=y2:
@@ -202,8 +203,7 @@ def convert_to_txt(fname_to_shapes, target_classes, is_seg=False, is_convert=Fal
                     new_rows[key].extend(kp)
             if not hit:
                 raise Exception(f'key point ({x},{y}) is not in any bbox. Fix it.')
-        if len(new_rows) == 0 and len(rows) == 0:
-            continue
+                    
         txt_name = fname.replace('.png','.txt').replace('.jpg','.txt')
         fname_to_rows[txt_name] = new_rows.values() if len(kps) else rows
         if len(kps):
@@ -213,6 +213,8 @@ def convert_to_txt(fname_to_shapes, target_classes, is_seg=False, is_convert=Fal
                 n_pts = int(n_pts)
             elif n_pts!=(len(r)-5)/2:
                 raise Exception(f'Inconsistent number of key points: {n_pts} and {(len(r)-5)/2}')
+    for k in del_names:
+        fname_to_shapes.pop(k)
     return fname_to_rows, ignore_cls, n_pts
 
 
@@ -228,7 +230,7 @@ def assign_class_id(fname_to_rows, class_to_id):
             row[0] = class_to_id[row[0]]
 
 
-def write_txts(fname_to_rows, path_txts):
+def write_txts(fname_to_rows, path_txts, names=None):
     """
     write to the yolo format txts
     Arugments:
@@ -236,7 +238,10 @@ def write_txts(fname_to_rows, path_txts):
         path_txts: the output folder contains txt files
     """
     os.makedirs(path_txts, exist_ok=True)
+    num_files = 0
     for fname in fname_to_rows:
+        if names is not None and fname not in names:
+            continue
         txt_file = os.path.join(path_txts, fname)
         with open(txt_file, 'w') as f:
             for shape in fname_to_rows[fname]:
@@ -247,7 +252,8 @@ def write_txts(fname_to_rows, path_txts):
                     row2 += f'{pt:.4f} '
                 row2 += '\n'
                 f.write(row2)
-    logger.info(f' wrote {len(fname_to_rows)} txt files to {path_txts}')
+        num_files += 1
+    logger.info(f' wrote {num_files} txt files to {path_txts}')
     
 
 def copy_images_in_folder(path_img, path_out, fnames=None):
@@ -258,18 +264,12 @@ def copy_images_in_folder(path_img, path_out, fnames=None):
         path_out(str): the path of output folder
     """
     os.makedirs(path_out, exist_ok=True)
-    logger.info(f'Number of images {len(fnames)}')
     if not fnames:
         l = glob.glob(os.path.join(path_img, '*.png')) + glob.glob(os.path.join(path_img, '*.jpg'))
     else:
         l = [f"{path_img}/{fname}" for fname in fnames]
     for f in l:
-        if os.path.exists(f+'.png'):
-            shutil.copy(f+'.png', path_out)
-        elif os.path.exists(f+'.jpg'):
-            shutil.copy(f+'.jpg', path_out)
-        else:
-            shutil.copy(f, path_out)
+        shutil.copy(f, path_out)
 
 
 if __name__ =='__main__':
@@ -352,13 +352,21 @@ if __name__ =='__main__':
 
     #write labels/annotations
     path_txts = os.path.join(args['path_out'], 'labels')
-    write_txts(fname_to_rows, path_txts)
 
     #write images
     path_img_out = os.path.join(args['path_out'], 'images')
     if args['bg']:
         logger.info('save background images')
         copy_images_in_folder(path_imgs, path_img_out)
+        write_txts(fname_to_rows, path_txts)
     else:
         logger.info('skip background images')
-        copy_images_in_folder(path_imgs, path_img_out, list(map(lambda x: x.replace('.txt',''), fname_to_rows.keys())))
+        names = []
+        txt_files = []
+        for name in fname_to_shapes:
+            if len(fname_to_rows[name.replace('.png', '.txt').replace('.jpg', '.txt')]) != 0:
+                names.append(name)
+                txt_files.append(name.replace('.png', '.txt').replace('.jpg', '.txt'))
+        write_txts(fname_to_rows, path_txts, txt_files)
+        copy_images_in_folder(path_imgs, path_img_out, fnames=names)
+        

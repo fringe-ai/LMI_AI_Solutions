@@ -12,10 +12,25 @@ logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+def crop_by_percent(image, crop_percent, crop_from = 'top'):
+    height, width = image.shape[:2]
+    x1, y1 = 0, 0
+    x2, y2 = width, height
+    if crop_from == 'top':
+        x1, y1 = 0, 0
+        x2, y2 = width, int(height * crop_percent)
+    elif crop_from == 'bottom':
+        x1, y1 = 0, int(height * (1 - crop_percent))
+        x2, y2 = width, height
+    return x1, y1, x2, y2
 
 def crop_kp(bbox, shape):
     x1,y1,x2,y2 = bbox
     w,h = x2-x1, y2-y1
+    x = shape.x - x1
+    y = shape.y - y1
+    
+    
     x,y = shape.x, shape.y
     x -= x1
     y -= y1
@@ -76,6 +91,8 @@ def main():
     ap.add_argument('--path_csv', default='labels.csv', help='[optinal] the path of a csv file that corresponds to path_imgs, default="labels.csv" in path_imgs')
     ap.add_argument('--path_out', '-o', required=True, help='the output path')
     ap.add_argument('--target_classes',required=True, help='the comma separated target classes to crop')
+    ap.add_argument('--crop_by_percent', type=float, default=0.0, help='the percentage of the image to crop', required=False)
+    ap.add_argument('--crop_from', default='top', help='the direction to crop the image', required=False)
     args = vars(ap.parse_args())
     path_imgs = args['path_imgs']
     path_csv = args['path_csv'] if args['path_csv']!='labels.csv' else os.path.join(path_imgs, args['path_csv'])
@@ -106,6 +123,7 @@ def main():
                 
     annots = collections.defaultdict(list)
     for fname in fname_to_shapes:
+        
         ext = os.path.basename(fname).split('.')[-1]
         updated_fname = os.path.basename(fname).replace(f'.{ext}', f'_cropped.{ext}')
         if fname not in foreground_shapes:
@@ -119,6 +137,13 @@ def main():
             logger.warning(f'failed to read {fname}, skip')
             continue
         
+        if args['crop_by_percent']>0:
+            x1,y1,x2,y2 = foreground_shapes[fname]['foreground']
+            sx,sy,ex,ey = crop_by_percent(image[y1:y2, x1:x2], args['crop_by_percent'], args['crop_from'])
+            logger.info(f'cropping {fname} by {args["crop_by_percent"]*100:.2f}% from {args["crop_from"]}')
+        
+            
+        
         H,W = image.shape[:2]
         for shape in fname_to_shapes[fname]:
             
@@ -130,11 +155,13 @@ def main():
                 x1,y1 = shape.up_left
                 x2,y2 = shape.bottom_right
                 bbox = [x1,y1,x2,y2]
-                updated_bbox = crop_bbox(foreground_shapes[fname]['foreground'], bbox)
+                cropped_bbox = crop_bbox(foreground_shapes[fname]['foreground'], bbox)
+                if args['crop_by_percent']>0:
+                    cropped_bbox = crop_bbox([sx,sy,ex,ey], cropped_bbox)
                 annots[updated_fname].append(
                      Rect(
-                        up_left=[updated_bbox[0], updated_bbox[1]],
-                        bottom_right=[updated_bbox[2], updated_bbox[3]],
+                        up_left=[cropped_bbox[0], cropped_bbox[1]],
+                        bottom_right=[cropped_bbox[2], cropped_bbox[3]],
                         angle=shape.angle,
                         confidence=shape.confidence,
                         category=shape.category,
@@ -148,6 +175,8 @@ def main():
                 mask = mask.astype(np.uint8)*255
                 # mask = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
                 cropped_mask, _ = crop_mask(foreground_shapes[fname]['foreground'], mask, bbox_format="xyxy")
+                if args['crop_by_percent']>0:
+                    cropped_mask, _ = crop_mask([sx,sy,ex,ey], cropped_mask, bbox_format="xyxy")
                 # add to brush labels
                 annots[updated_fname].append(
                     Brush(
@@ -163,6 +192,10 @@ def main():
                 x,y,is_valid = crop_kp(foreground_shapes[fname]['foreground'], shape)
                 if not is_valid:
                     continue
+                if args['crop_by_percent']>0:
+                    x,y,is_valid = crop_kp([sx,sy,ex,ey], Keypoint(x=x, y=y, confidence=shape.confidence, category=shape.category, im_name=updated_fname, fullpath=os.path.join(args['path_out'], updated_fname)))
+                if not is_valid:
+                    continue
                 annots[updated_fname].append(
                     Keypoint(
                         x=x,
@@ -173,11 +206,32 @@ def main():
                         fullpath=os.path.join(args['path_out'], updated_fname)
                     )
                 )
-                
+            
+            # suporting polygon mask
+            if isinstance(shape, Mask):
+                polygon_x = shape.X
+                polygon_y = shape.Y
+                polygon_mask = np.stack([polygon_x, polygon_y], axis=1)
+                _, cropped_polygon = crop_mask(foreground_shapes[fname]['foreground'], mask=None, polygon_mask=polygon_mask, bbox_format="xyxy")
+                if args['crop_by_percent']>0:
+                    _, cropped_polygon = crop_mask([sx,sy,ex,ey], mask=None, polygon_mask=cropped_polygon, bbox_format="xyxy")
+                # add to mask labels
+                annots[updated_fname].append(
+                    Mask(
+                        x_vals=cropped_polygon[:, 0].tolist(),
+                        y_vals=cropped_polygon[:, 1].tolist(),
+                        confidence=shape.confidence,
+                        category=shape.category,
+                        im_name=updated_fname,
+                        fullpath=os.path.join(args['path_out'], updated_fname)
+                    )
+                )
                 
         # save the cropped image
         x1,y1,x2,y2 = foreground_shapes[fname]['foreground']
         cropped_image = image[y1:y2, x1:x2]
+        if args['crop_by_percent']>0:
+            cropped_image = cropped_image[sy:ey, sx:ex]
         
         cv2.imwrite(os.path.join(args['path_out'], updated_fname), cropped_image)
         

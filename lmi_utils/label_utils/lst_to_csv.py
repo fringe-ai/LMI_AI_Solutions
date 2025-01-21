@@ -5,6 +5,7 @@ import json
 import numpy as np
 import collections
 import glob
+import pathlib
 from label_studio_sdk.converter.brush import decode_rle
 
 from label_utils.csv_utils import write_to_csv
@@ -18,6 +19,38 @@ logger.setLevel(logging.INFO)
 LABEL_NAME = 'labels.csv'
 PRED_NAME = 'preds.csv'
 
+
+class Node:
+    def __init__(self, name):
+        self.name = name
+        self.children = []
+        
+    def append(self, node):
+        self.children.append(node)
+        
+        
+def common_node(paths):
+    """find the node that is the common parent of all paths
+    """
+    root = Node('')
+    for path in paths:
+        path = pathlib.Path(path).as_posix()
+        cur = root
+        for part in path.split('/'):
+            found = False
+            for child in cur.children:
+                if child.name == part:
+                    cur = child
+                    found = True
+                    break
+            if not found:
+                new_node = Node(part)
+                cur.append(new_node)
+                cur = new_node
+    cur = root
+    while len(cur.children) == 1:
+        cur = cur.children[0]
+    return cur
 
 
 def lst_to_shape(result:dict, fname:str, load_confidence=False):
@@ -76,24 +109,49 @@ def get_annotations_from_json(path_json):
         json_files=[path_json]
     else:
         json_files=glob.glob(os.path.join(path_json,'*.json'))
-
-    annots = collections.defaultdict(list)
-    preds = collections.defaultdict(list)
+    
+    # get common parent node
+    for path_json in json_files:
+        with open(path_json) as f:    
+            l = json.load(f)
+        
+        img_lists = []
+        for dt in l:
+            if 'data' not in dt:
+                raise Exception('missing "data" in json file. Ensure that the label studio export format is not JSON-MIN.')
+            f = dt['data']['image']
+            img_lists.append(f)
+    root = common_node(img_lists)
+    
+    annots = {}
+    preds = {}
     for path_json in json_files:
         logger.info(f'Extracting labels from: {path_json}')
         with open(path_json) as f:    
             l = json.load(f)
-
+        
         cnt_anno = 0
         cnt_image = 0
         cnt_pred = 0
         cnt_wrong = 0
+        prefixes = set(n.name for n in root.children)
         for dt in l:
-            # load file name
-            if 'data' not in dt:
-                raise Exception('missing "data" in json file. Ensure that the label studio export format is not JSON-MIN.')
-            f = dt['data']['image'] # image web path
-            fname = os.path.basename(f)
+            f = pathlib.Path(dt['data']['image'])
+            l2 = f.as_posix().split('/')
+            i = None
+            for p in prefixes:
+                if p not in l2:
+                    continue
+                i = l2.index(p)
+                key = '_'.join(l2[i:-1])
+                
+            if key not in annots:
+                annots[key] = collections.defaultdict(list)
+                preds[key] = collections.defaultdict(list)
+                
+            fname = f.name
+            if fname in annots[key]:
+                raise Exception('Found duplicate name')
             
             if 'annotations' in dt:
                 cnt = 0
@@ -104,14 +162,14 @@ def get_annotations_from_json(path_json):
                     for result in annot['result']:
                         shape = lst_to_shape(result,fname)
                         if shape is not None:
-                            annots[fname].append(shape)
+                            annots[key][fname].append(shape)
                             cnt_anno += 1
                             
                     if 'prediction' in annot and 'result' in annot['prediction']:
                         for result in annot['prediction']['result']:
                             shape = lst_to_shape(result,fname,load_confidence=True)
                             if shape is not None:
-                                preds[fname].append(shape)
+                                preds[key][fname].append(shape)
                                 cnt_pred += 1
                 if cnt>0:
                     cnt_image += 1
@@ -147,7 +205,9 @@ if __name__ == '__main__':
     if os.path.isfile(args.path_out):
         raise Exception('The output path should be a directory')
     
-    if not os.path.isdir(args.path_out):
-        os.makedirs(args.path_out)
-    write_to_csv(annots, os.path.join(args.path_out, LABEL_NAME))
-    write_to_csv(preds, os.path.join(args.path_out, PRED_NAME))
+    for k in annots:
+        path_out = os.path.join(args.path_out, k)
+        os.makedirs(path_out,exist_ok=1)
+        
+        write_to_csv(annots[k], os.path.join(path_out, LABEL_NAME))
+        write_to_csv(preds[k], os.path.join(path_out, PRED_NAME))
