@@ -20,10 +20,16 @@ def main():
     ap.add_argument('--path_imgs', '-i', required=True, help='the path of a image folder')
     ap.add_argument('--path_csv', default='labels.csv', help='[optinal] the path of a csv file that corresponds to path_imgs, default="labels.csv" in path_imgs')
     ap.add_argument('--path_out', '-o', required=True, help='the output path')
-    ap.add_argument('--symc',required=True, help='the comma separated symetrical classes')
+    ap.add_argument('--symc',required=True, help='the comma separated symetrical classes. Every two classes are symetrical to each other.')
     args = vars(ap.parse_args())
     path_imgs = args['path_imgs']
     symc = args['symc'].split(',')
+    if len(symc) % 2 != 0:
+        raise ValueError('symc should have even number of elements')
+    symc_dict = {}
+    for i in range(0, len(symc), 2):
+        symc_dict[symc[i]] = symc[i+1]
+        symc_dict[symc[i+1]] = symc[i]
     path_csv = args['path_csv'] if args['path_csv']!='labels.csv' else os.path.join(path_imgs, args['path_csv'])
     fname_to_shapes,class_to_id = load_csv(path_csv, path_imgs, zero_index=True)
     if not os.path.exists(args['path_out']):
@@ -42,9 +48,8 @@ def main():
         
         for shape in fname_to_shapes[fname]:
             new_symc = shape.category
-            if shape.category in symc:
-                idx = symc.index(shape.category)
-                new_symc = symc[-idx]
+            if shape.category in symc_dict:
+                new_symc = symc_dict[shape.category]
                 
             if isinstance(shape, Rect):
                 x1,y1 = shape.up_left

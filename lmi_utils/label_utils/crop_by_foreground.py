@@ -26,11 +26,7 @@ def crop_by_percent(image, crop_percent, crop_from = 'top'):
 
 def crop_kp(bbox, shape):
     x1,y1,x2,y2 = bbox
-    w,h = x2-x1, y2-y1
-    x = shape.x - x1
-    y = shape.y - y1
-    
-    
+    w,h = x2-x1, y2-y1    
     x,y = shape.x, shape.y
     x -= x1
     y -= y1

@@ -30,7 +30,7 @@ class Node:
         
         
 def common_node(paths):
-    """find the node that is the common parent of all paths
+    """find the deepest node that is the common parent of all paths
     """
     root = Node('')
     for path in paths:
@@ -122,6 +122,7 @@ def get_annotations_from_json(path_json):
             f = dt['data']['image']
             img_lists.append(f)
     root = common_node(img_lists)
+    prefixes = set(n.name for n in root.children)
     
     annots = {}
     preds = {}
@@ -134,16 +135,13 @@ def get_annotations_from_json(path_json):
         cnt_image = 0
         cnt_pred = 0
         cnt_wrong = 0
-        prefixes = set(n.name for n in root.children)
         for dt in l:
             f = pathlib.Path(dt['data']['image'])
             l2 = f.as_posix().split('/')
-            i = None
-            for p in prefixes:
-                if p not in l2:
-                    continue
-                i = l2.index(p)
-                key = '_'.join(l2[i:-1])
+            i = next((l2.index(p) for p in prefixes if p in l2), -1)
+            if i==-1:
+                raise Exception('Cannot find common parent node')
+            key = '_'.join(l2[i:-1])
                 
             if key not in annots:
                 annots[key] = collections.defaultdict(list)

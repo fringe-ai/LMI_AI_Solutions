@@ -178,14 +178,15 @@ def convert_to_txt(fname_to_shapes, target_classes, is_seg=False, is_convert=Fal
                     rows.append([class_name]+xywh)                    
             elif isinstance(shape, Keypoint):
                 x,y = shape.x, shape.y
-                row = [x/W, y/H]
+                row = [shape.category, x/W, y/H]
                 ignore_cls.add(shape.category)
                 kps.append(row)
                 
         # assign keypoint to bbox
         new_rows = {}
+        kps.sort(key=lambda x: x[0]) # sort by class name
         for kp in kps:
-            x,y = kp
+            c,x,y = kp
             x,y = x*W, y*H
             hit = 0
             for row in rows:
@@ -200,7 +201,7 @@ def convert_to_txt(fname_to_shapes, target_classes, is_seg=False, is_convert=Fal
                     key = ','.join(str(v) for v in row)
                     if key not in new_rows:
                         new_rows[key] = row[:]
-                    new_rows[key].extend(kp)
+                    new_rows[key].extend(kp[1:])
             if not hit:
                 raise Exception(f'key point ({x},{y}) is not in any bbox. Fix it.')
                     
