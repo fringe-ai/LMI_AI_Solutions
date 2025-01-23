@@ -183,7 +183,7 @@ services:
     ipc: host
     runtime: nvidia # ensure that Nvidia Container Toolkit is installed
     command: >
-      bash -c "source /app/LMI_AI_Solutions/lmi_ai.env && python -m anomalib_lmi.anomaly_model2 -a convert -i /app/weights/torch/model.pt -e /app/weights/engine"
+      bash -c "source /app/LMI_AI_Solutions/lmi_ai.env && python -m anomalib_lmi.anomaly_model2 convert -i /app/weights/torch/model.pt -e /app/weights/engine"
 
 ```
 ### 3.3 Convert model
@@ -217,7 +217,7 @@ services:
     ipc: host
     runtime: nvidia # ensure that Nvidia Container Toolkit is installed
     command: >
-      bash -c "source /app/LMI_AI_Solutions/lmi_ai.env && python -m anomalib_lmi.anomaly_model2 -i /app/weights/engine/model.engine -d /app/data -o /app/outputs -p"
+      bash -c "source /app/LMI_AI_Solutions/lmi_ai.env && python -m anomalib_lmi.anomaly_model2 test -i /app/weights/engine/model.engine -d /app/data -o /app/outputs -p"
 
 ```
 ### 4.2 Validate model

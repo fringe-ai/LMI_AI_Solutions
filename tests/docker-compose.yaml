@@ -36,7 +36,7 @@ services:
     runtime: nvidia # ensure that Nvidia Container Toolkit is installed
     ipc: host
     command: >
-      bash -c "cd /app/repo && pytest --ignore tests/anomaly_detectors/anomalib_lmi/test_anomaly_model.py"
+      bash -c "cd /app/repo && pytest tests/anomaly_detectors --ignore tests/anomaly_detectors/anomalib_lmi/test_anomaly_model.py"
 
   test_ais_anomaly_detectors_all_v0:
     depends_on:
@@ -50,4 +50,4 @@ services:
     runtime: nvidia # ensure that Nvidia Container Toolkit is installed
     ipc: host
     command: >
-      bash -c "cd /app/repo && pytest --ignore tests/anomaly_detectors/anomalib_lmi/test_anomaly_model2.py"
+      bash -c "cd /app/repo && pytest tests/anomaly_detectors/anomalib_lmi/test_anomaly_model.py"
