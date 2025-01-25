@@ -7,15 +7,10 @@ import os
 import cv2
 
 # add path to the repo
-PATH = os.path.abspath(__file__)
-ROOT = os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(PATH))))))
-sys.path.append(os.path.join(ROOT, 'lmi_utils'))
-sys.path.append(os.path.join(ROOT, 'object_detectors'))
 
 import gadget_utils.pipeline_utils as pipeline_utils
 from ultralytics_lmi.yolo.model import Yolo, YoloObb, YoloPose
 from core.object_detector import ObjectDetector
-
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)

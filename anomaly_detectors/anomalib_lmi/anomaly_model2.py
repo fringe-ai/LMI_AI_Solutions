@@ -11,7 +11,7 @@ from torchvision.transforms import v2
 from .base import Anomalib_Base, to_list
 from image_utils.tiler import Tiler, ScaleMode
 import gadget_utils.pipeline_utils as pipeline_utils
-from anomaly_detector import AnomalyDetector
+from core.anomaly_detector import AnomalyDetector
 
 logging.basicConfig()
 

@@ -10,16 +10,10 @@ import numpy as np
 import torch
 import subprocess
 import time
-from anomalib.deploy.inferencers.torch_inferencer import TorchInferencer
-from anomalib.data.utils import read_image
-
-# add path to the repo
 PATH = os.path.abspath(__file__)
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(PATH))))
-sys.path.append(os.path.join(ROOT, 'lmi_utils'))
-sys.path.append(os.path.join(ROOT, 'anomaly_detectors'))
-
-
+from anomalib.deploy.inferencers.torch_inferencer import TorchInferencer
+from anomalib.data.utils import read_image
 from anomalib_lmi.anomaly_model2 import AnomalyModel2
 from core.anomaly_detector import AnomalyDetector
 from gadget_utils import pipeline_utils

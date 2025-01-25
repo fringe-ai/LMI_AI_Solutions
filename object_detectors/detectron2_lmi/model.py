@@ -1,6 +1,6 @@
 from typing import Dict, List
-from od_base import ODBase
-from object_detector import ObjectDetector
+from core.od_base import ODBase
+from core.object_detector import ObjectDetector
 import tensorrt as trt
 from cuda import cudart
 import numpy as np

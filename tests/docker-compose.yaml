@@ -1,5 +1,5 @@
 services:
-  test_ais_lmi_utils:
+  test_ais_packaged:
     build:
       context: .
       dockerfile: ./dockerfile
@@ -8,8 +8,24 @@ services:
     runtime: nvidia # ensure that Nvidia Container Toolkit is installed
     ipc: host
     command: >
-      bash -c "cd /app/repo && pytest tests/lmi_utils/"
+      bash -c "cd /app/repo/ && bash tests/run_packaged_tests.sh"
   
+  test_ais_lmi_utils:
+    depends_on:
+      test_ais_packaged:
+        condition: service_completed_successfully
+    build:
+      context: .
+      dockerfile: ./dockerfile
+    volumes:
+      - ../:/app/repo
+    runtime: nvidia # ensure that Nvidia Container Toolkit is installed
+    ipc: host
+    command: >
+      bash -c "cd /app/repo && pip3 install -e lmi_utils/ \
+              pip3 install -e lmi_utils/ \
+              pytest -v --md=/app/repo/tests/lmi_utils.md tests/lmi_utils/"
+
   test_ais_object_detectors:
     depends_on:
       test_ais_lmi_utils:
@@ -22,8 +38,11 @@ services:
     runtime: nvidia # ensure that Nvidia Container Toolkit is installed
     ipc: host
     command: >
-      bash -c "cd /app/repo && pytest tests/object_detectors/"
-  
+      bash -c "cd /app/repo && \
+              pip3 install -e lmi_utils/ \
+              pip3 install -e object_detectors/ \
+              pytest -v --md=/app/repo/tests/object_detectors.md tests/object_detectors/"
+
   test_ais_anomaly_detectors_all_v1:
     depends_on:
       test_ais_object_detectors:
@@ -36,7 +55,11 @@ services:
     runtime: nvidia # ensure that Nvidia Container Toolkit is installed
     ipc: host
     command: >
-      bash -c "cd /app/repo && pytest --ignore tests/anomaly_detectors/anomalib_lmi/test_anomaly_model.py"
+      bash -c "cd /app/repo && \
+              pip3 install -e lmi_utils/ \
+              pip3 install -e object_detectors/ \
+              pip3 install -e anomaly_detectors/ \
+              pytest -v --md=/app/repo/tests/anomaly_detectors_v1_all.md tests/anomaly_detectors/anomalib_lmi/test_anomaly_model2*"
 
   test_ais_anomaly_detectors_all_v0:
     depends_on:
@@ -50,4 +73,8 @@ services:
     runtime: nvidia # ensure that Nvidia Container Toolkit is installed
     ipc: host
     command: >
-      bash -c "cd /app/repo && pytest --ignore tests/anomaly_detectors/anomalib_lmi/test_anomaly_model2.py"
+      bash -c "cd /app/repo && \
+              pip3 install -e lmi_utils/ \
+              pip3 install -e object_detectors/ \
+              pip3 install -e anomaly_detectors/ \
+              pytest -v --md=/app/repo/tests/anomaly_detectors_v0_all.md tests/anomaly_detectors/ --ignore tests/anomaly_detectors/anomalib_lmi/test_anomaly2_model.py"

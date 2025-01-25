@@ -15,13 +15,10 @@ import logging
 import numpy as np
 
 
-PATH = os.path.abspath(__file__)
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(PATH))))
-sys.path.append(os.path.join(ROOT, 'lmi_utils'))
-sys.path.append(os.path.join(ROOT, 'object_detectors'))
 
 from detectron2_lmi.model import Detectron2Model
 from core.object_detector import ObjectDetector
+# from object_detector import ObjectDetector
 
 with open('tests/assets/coco_class_names.txt','r') as f:
     classnames = f.readlines()

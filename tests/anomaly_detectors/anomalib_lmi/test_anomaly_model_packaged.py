@@ -4,11 +4,11 @@ import os
 import tempfile
 import subprocess
 
-# add path to the repo
+# # add path to the repo
 PATH = os.path.abspath(__file__)
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(PATH))))
-sys.path.append(os.path.join(ROOT, 'lmi_utils'))
-sys.path.append(os.path.join(ROOT, 'anomaly_detectors'))
+# sys.path.append(os.path.join(ROOT, 'lmi_utils'))
+# sys.path.append(os.path.join(ROOT, 'anomaly_detectors'))
 
 
 from anomalib_lmi.anomaly_model import AnomalyModel
