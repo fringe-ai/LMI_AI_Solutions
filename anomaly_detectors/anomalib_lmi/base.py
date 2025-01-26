@@ -67,7 +67,7 @@ class Anomalib_Base(ABC):
         
         if self.tiler is not None:
             if input_hw is None:
-                raise Exception('Must provide input (h,w) when convert model to onnx')
+                raise Exception('Must provide input (h,w) when convert model to onnx and use tiling')
             hw = to_list(input_hw)
             zeros = torch.zeros(1,3,*hw,device=self.device)
             tiles = self.tiler.tile(zeros)

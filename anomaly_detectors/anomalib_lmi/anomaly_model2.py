@@ -87,6 +87,7 @@ class AnomalyModel2(Anomalib_Base):
             for d in self.pt_model.transform.transforms:
                 if isinstance(d, v2.Resize):
                     self.model_shape = to_list(d.size)
+                    self.logger.info(f"Model shape: {self.model_shape}")
             self.inference_mode='PT'
         else:
             raise Exception(f'Unknown model format: {ext}')
