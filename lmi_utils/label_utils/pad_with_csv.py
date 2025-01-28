@@ -7,7 +7,7 @@ import logging
 #LMI packages
 from label_utils.shapes import Rect, Mask, Keypoint, Brush
 from label_utils.csv_utils import load_csv, write_to_csv
-from gadget_utils.pipeline_utils import fit_array_to_size
+from inspection_utils.pipeline_utils import fit_array_to_size
 from system_utils.path_utils import get_relative_paths
 
 

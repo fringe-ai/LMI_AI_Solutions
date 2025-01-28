@@ -22,7 +22,7 @@ def add_root_path(request):
         logger.info("Skipping adding root path to sys.path")
 
 
-import gadget_utils.pipeline_utils as pipeline_utils
+import inspection_utils.pipeline_utils as pipeline_utils
 from yolov8_lmi.model import Yolov8, Yolov8Obb, Yolov8Pose
 from core.object_detector import ObjectDetector
 

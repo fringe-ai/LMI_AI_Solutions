@@ -5,7 +5,7 @@ import tensorrt as trt
 from cuda import cudart
 import numpy as np
 import detectron2_lmi.utils.common_runtime as common
-from gadget_utils.pipeline_utils import plot_one_box, revert_to_origin, revert_mask_to_origin
+from inspection_utils.pipeline_utils import plot_one_box, revert_to_origin, revert_mask_to_origin
 from postprocess_utils.mask_utils import rescale_masks,mask_to_polygon_cv2
 import cv2
 import logging

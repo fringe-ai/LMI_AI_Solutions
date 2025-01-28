@@ -25,7 +25,7 @@ def add_root_path(request):
         logger.info("Skipping adding root path to sys.path")
     
 
-import gadget_utils.pipeline_utils as pipeline_utils
+import inspection_utils.pipeline_utils as pipeline_utils
     
 
 class Test_resize_image:

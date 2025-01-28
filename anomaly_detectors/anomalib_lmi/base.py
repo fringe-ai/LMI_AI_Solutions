@@ -7,7 +7,7 @@ import json
 import subprocess
 from abc import ABC, abstractmethod
 
-import gadget_utils.pipeline_utils as pipeline_utils
+import inspection_utils.pipeline_utils as pipeline_utils
 
 
 logging.basicConfig()

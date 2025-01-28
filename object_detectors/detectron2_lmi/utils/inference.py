@@ -11,7 +11,7 @@ import logging
 import time
 import cv2
 import numpy as np
-from gadget_utils.pipeline_utils import plot_one_box
+from inspection_utils.pipeline_utils import plot_one_box
 from label_utils.shapes import Rect, Mask, Keypoint
 from label_utils.csv_utils import write_to_csv
 import json

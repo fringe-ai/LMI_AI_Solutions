@@ -3,7 +3,7 @@ import os
 import argparse
 import logging
 
-from gadget_utils.pipeline_utils import fit_array_to_size
+from inspection_utils.pipeline_utils import fit_array_to_size
 from system_utils.path_utils import get_relative_paths
 
 

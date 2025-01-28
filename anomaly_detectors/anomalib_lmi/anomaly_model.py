@@ -7,7 +7,7 @@ import numpy as np
 import albumentations as A
 
 from .base import Anomalib_Base
-import gadget_utils.pipeline_utils as pipeline_utils
+import inspection_utils.pipeline_utils as pipeline_utils
 from core.anomaly_detector import AnomalyDetector
 
 

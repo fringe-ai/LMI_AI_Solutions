@@ -14,7 +14,7 @@ from ultralytics.utils.torch_utils import smart_inference_mode
 # import LMI AI Solutions modules
 from core.od_base import ODBase
 from core.object_detector import ObjectDetector
-import gadget_utils.pipeline_utils as pipeline_utils
+import inspection_utils.pipeline_utils as pipeline_utils
 
 
 

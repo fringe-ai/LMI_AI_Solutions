@@ -21,7 +21,7 @@ def add_root_path(request):
     else:
         logger.info("Skipping adding root path to sys.path")
 
-import gadget_utils.pipeline_utils as pipeline_utils
+import inspection_utils.pipeline_utils as pipeline_utils
 from ultralytics_lmi.yolo.model import Yolo, YoloObb, YoloPose
 from core.object_detector import ObjectDetector
 
