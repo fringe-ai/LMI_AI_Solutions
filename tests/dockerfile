@@ -25,5 +25,5 @@ RUN pip install --user -e detectron2
 RUN pip install tensorboard
 RUN pip install numba
 # report generation
-RUN pip install pytest-md 
+RUN pip install pytest-html 
 

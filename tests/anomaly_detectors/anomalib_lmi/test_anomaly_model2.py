@@ -16,8 +16,14 @@ from anomalib.data.utils import read_image
 # add path to the repo
 PATH = os.path.abspath(__file__)
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(PATH))))
-sys.path.append(os.path.join(ROOT, 'lmi_utils'))
-sys.path.append(os.path.join(ROOT, 'anomaly_detectors'))
+@pytest.fixture()
+def add_root_path(request):
+    if request.config.getoption("--test-package") is False:
+        sys.path.append(os.path.join(ROOT, 'lmi_utils'))
+        sys.path.append(os.path.join(ROOT, 'anomaly_detectors'))
+        logger.info(f"Added {ROOT} to sys.path")
+    else:
+        logger.info("Skipping adding root path to sys.path")
 
 
 from anomalib_lmi.anomaly_model2 import AnomalyModel2
@@ -48,7 +54,7 @@ def test_data():
     return out,names
 
 
-def test_compare_results_with_anomalib():
+def test_compare_results_with_anomalib(add_root_path):
     """
     compare prediction results between current implementation and anomalib
     """
@@ -76,7 +82,7 @@ def test_compare_results_with_anomalib():
         
         assert np.array_equal(pred, pred2)
 
-def test_compare_results_with_anomalib_api():
+def test_compare_results_with_anomalib_api(add_root_path):
     """
     compare prediction results between current implementation and anomalib
     """
@@ -105,7 +111,7 @@ def test_compare_results_with_anomalib_api():
         assert np.array_equal(pred, pred2)
 
         
-def test_warmup():
+def test_warmup(add_root_path):
     ad = AnomalyModel2(MODEL_PATH,224,112)
     ad.warmup()
     ad.warmup([672,640])
@@ -114,7 +120,7 @@ def test_warmup():
     ad.warmup()
     ad.warmup([256,224])
 
-def test_warmup_api():
+def test_warmup_api(add_root_path):
     ad = AnomalyDetector(dict(framework='anomalib', model_name='padim', task='seg', version='v1'), MODEL_PATH,224,112)
     ad.warmup()
     ad.warmup([672,640])
@@ -124,21 +130,21 @@ def test_warmup_api():
     ad.warmup([256,224])
     
 
-def test_model():
+def test_model(add_root_path):
     ad = AnomalyModel2(MODEL_PATH,224,224,'resize')
     ad.test(DATA_PATH, OUTPUT_PATH)
     
     ad = AnomalyModel2(MODEL_PATH)
     ad.test(DATA_PATH, OUTPUT_PATH)
 
-def test_model_api():
+def test_model_api(add_root_path):
     ad = AnomalyDetector(dict(framework='anomalib', model_name='padim', version='v1'), MODEL_PATH,224,224,'resize')
     ad.test(DATA_PATH, OUTPUT_PATH)
     
     ad = AnomalyDetector(dict(framework='anomalib', model_name='padim', version='v1'), MODEL_PATH)
     ad.test(DATA_PATH, OUTPUT_PATH)
     
-def test_annotate(test_data):
+def test_annotate(test_data, add_root_path):
     def old_func(img, ad_scores, ad_threshold, ad_max):
         # Resize AD score to match input image
         h_img,w_img=img.shape[:2]
@@ -194,7 +200,7 @@ def test_annotate(test_data):
             assert np.array_equal(out2,out3)
     
     
-def test_cmds():
+def test_cmds(add_root_path):
     """test model inference and model to tensorrt conversion
     """
     with tempfile.TemporaryDirectory() as t:

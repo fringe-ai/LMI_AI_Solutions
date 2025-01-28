@@ -1,4 +1,5 @@
 import os
+import pytest
 import sys
 import json 
 import cv2
@@ -17,8 +18,17 @@ import numpy as np
 
 PATH = os.path.abspath(__file__)
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(PATH))))
-sys.path.append(os.path.join(ROOT, 'lmi_utils'))
-sys.path.append(os.path.join(ROOT, 'object_detectors'))
+# sys.path.append(os.path.join(ROOT, 'lmi_utils'))
+# sys.path.append(os.path.join(ROOT, 'object_detectors'))
+
+@pytest.fixture()
+def add_root_path(request):
+    if request.config.getoption("--test-package") is False:
+        sys.path.append(os.path.join(ROOT, 'lmi_utils'))
+        sys.path.append(os.path.join(ROOT, 'object_detectors'))
+        logger.info(f"Added {ROOT} to sys.path")
+    else:
+        logger.info("Skipping adding root path to sys.path")
 
 from detectron2_lmi.model import Detectron2Model
 from core.object_detector import ObjectDetector
@@ -44,7 +54,7 @@ logger.setLevel(logging.DEBUG)
 
 class TestDetectron2ModelPT:
 
-    def test_model(self):
+    def test_model(self, add_root_path):
         og_model = model_zoo.get(MASKRCNN_MODEL_CONFIG, trained=True)
         og_model.eval()
         img = get_sample_coco_image()
@@ -67,7 +77,7 @@ class TestDetectron2ModelPT:
         assert np.allclose(orginal_preds.scores.cpu().numpy(), preds.get('scores'))
         assert np.allclose(orginal_preds.pred_masks.cpu().numpy(), preds.get('masks'))
         
-    def test_annotations(self):
+    def test_annotations(self, add_root_path):
         confs = {
            v:0.95 for k,v in class_map.items()
         }
@@ -87,7 +97,7 @@ class TestDetectron2ModelPT:
         )
         cv2.imwrite(os.path.join(OUT_DIR, os.path.basename(SAMPLE_IMAGE)), annotated_image)
         
-    def test_operators(self):
+    def test_operators(self, add_root_path):
         confs = {
            v:0.95 for k,v in class_map.items()
         }
@@ -110,7 +120,7 @@ class TestDetectron2ModelPT:
         )
         cv2.imwrite(os.path.join(OUT_DIR, os.path.basename(SAMPLE_IMAGE)), annotated_image)
     
-    def test_operators_no_masks(self):
+    def test_operators_no_masks(self, add_root_path):
         confs = {
            v:1.0 for k,v in class_map.items()
         }
@@ -129,7 +139,7 @@ class TestDetectron2ModelPT:
         
 class TestDetectron2ModelPT_API:
 
-    def test_model(self):
+    def test_model(self, add_root_path):
         og_model = model_zoo.get(MASKRCNN_MODEL_CONFIG, trained=True)
         og_model.eval()
         img = get_sample_coco_image()
@@ -152,7 +162,7 @@ class TestDetectron2ModelPT_API:
         assert np.allclose(orginal_preds.scores.cpu().numpy(), preds.get('scores'))
         assert np.allclose(orginal_preds.pred_masks.cpu().numpy(), preds.get('masks'))
         
-    def test_annotations(self):
+    def test_annotations(self, add_root_path):
         confs = {
            v:0.95 for k,v in class_map.items()
         }
@@ -172,7 +182,7 @@ class TestDetectron2ModelPT_API:
         )
         cv2.imwrite(os.path.join(OUT_DIR, os.path.basename(SAMPLE_IMAGE)), annotated_image)
         
-    def test_operators(self):
+    def test_operators(self, add_root_path):
         confs = {
            v:0.95 for k,v in class_map.items()
         }
@@ -195,7 +205,7 @@ class TestDetectron2ModelPT_API:
         )
         cv2.imwrite(os.path.join(OUT_DIR, os.path.basename(SAMPLE_IMAGE)), annotated_image)
     
-    def test_operators_no_masks(self):
+    def test_operators_no_masks(self, add_root_path):
         confs = {
            v:1.0 for k,v in class_map.items()
         }

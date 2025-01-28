@@ -9,8 +9,17 @@ import cv2
 # add path to the repo
 PATH = os.path.abspath(__file__)
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(PATH))))
-sys.path.append(os.path.join(ROOT, 'lmi_utils'))
-sys.path.append(os.path.join(ROOT, 'object_detectors'))
+# sys.path.append(os.path.join(ROOT, 'lmi_utils'))
+# sys.path.append(os.path.join(ROOT, 'object_detectors'))
+
+@pytest.fixture()
+def add_root_path(request):
+    if request.config.getoption("--test-package") is False:
+        sys.path.append(os.path.join(ROOT, 'lmi_utils'))
+        sys.path.append(os.path.join(ROOT, 'object_detectors'))
+        logger.info(f"Added {ROOT} to sys.path")
+    else:
+        logger.info("Skipping adding root path to sys.path")
 
 
 import gadget_utils.pipeline_utils as pipeline_utils
@@ -107,10 +116,10 @@ def imgs_dota():
 
 
 class Test_Yolov8:
-    def test_warmup(self, model_det):
+    def test_warmup(self, model_det, add_root_path):
         model_det.warmup()
             
-    def test_predict(self, model_det, imgs_coco):
+    def test_predict(self, model_det, imgs_coco, add_root_path):
         i = 0
         for img,resized,op in zip(*imgs_coco):
             out,time_info = model_det.predict(resized,configs=0.5,operators=op)
@@ -133,10 +142,10 @@ class Test_Yolov8:
             
 
 class Test_Yolov8_API:
-    def test_warmup(self, model_det_api):
+    def test_warmup(self, model_det_api, add_root_path):
         model_det_api.warmup()
             
-    def test_predict(self, model_det_api, imgs_coco):
+    def test_predict(self, model_det_api, imgs_coco, add_root_path):
         i = 0
         for img,resized,op in zip(*imgs_coco):
             out,time_info = model_det_api.predict(resized,configs=0.5,operators=op)
@@ -159,10 +168,10 @@ class Test_Yolov8_API:
                 
                 
 class Test_Yolov8_seg:
-    def test_warmup(self, model_seg):
+    def test_warmup(self, model_seg, add_root_path):
         model_seg.warmup()
             
-    def test_predict(self, model_seg, imgs_coco):
+    def test_predict(self, model_seg, imgs_coco, add_root_path):
         i = 0
         for img,resized,op in zip(*imgs_coco):
             out,time_info = model_seg.predict(resized,configs=0.5,operators=op)
@@ -185,10 +194,10 @@ class Test_Yolov8_seg:
             
 
 class Test_Yolov8_seg_API:
-    def test_warmup(self, model_seg_api):
+    def test_warmup(self, model_seg_api, add_root_path):
         model_seg_api.warmup()
             
-    def test_predict(self, model_seg_api, imgs_coco):
+    def test_predict(self, model_seg_api, imgs_coco, add_root_path):
         i = 0
         for img,resized,op in zip(*imgs_coco):
             out,time_info = model_seg_api.predict(resized,configs=0.5,operators=op)
@@ -211,10 +220,10 @@ class Test_Yolov8_seg_API:
 
 
 class Test_Yolov8_obb:
-    def test_warmup(self, model_obb):
+    def test_warmup(self, model_obb, add_root_path):
         model_obb.warmup()
         
-    def test_predict(self, model_obb, imgs_dota):
+    def test_predict(self, model_obb, imgs_dota, add_root_path):
         i = 0
         for img,resized,op in zip(*imgs_dota):
             out,time_info = model_obb.predict(resized,configs=0.5,operators=op)
@@ -237,10 +246,10 @@ class Test_Yolov8_obb:
             
 
 class Test_Yolov8_obb_API:
-    def test_warmup(self, model_obb_api):
+    def test_warmup(self, model_obb_api, add_root_path):
         model_obb_api.warmup()
         
-    def test_predict(self, model_obb_api, imgs_dota):
+    def test_predict(self, model_obb_api, imgs_dota, add_root_path):
         i = 0
         for img,resized,op in zip(*imgs_dota):
             out,time_info = model_obb_api.predict(resized,configs=0.5,operators=op)
@@ -263,10 +272,10 @@ class Test_Yolov8_obb_API:
             
 
 class Test_Yolov8_pose:
-    def test_warmup(self, model_pose):
+    def test_warmup(self, model_pose, add_root_path):
         model_pose.warmup()
         
-    def test_predict(self, model_pose, imgs_coco):
+    def test_predict(self, model_pose, imgs_coco, add_root_path):
         i = 0
         for img,resized,op in zip(*imgs_coco):
             out,time_info = model_pose.predict(resized,configs=0.5,operators=op)
@@ -288,10 +297,10 @@ class Test_Yolov8_pose:
             i += 1
             
 class Test_Yolov8_pose_API:
-    def test_warmup(self, model_pose_api):
+    def test_warmup(self, model_pose_api, add_root_path):
         model_pose_api.warmup()
         
-    def test_predict(self, model_pose_api, imgs_coco):
+    def test_predict(self, model_pose_api, imgs_coco, add_root_path):
         i = 0
         for img,resized,op in zip(*imgs_coco):
             out,time_info = model_pose_api.predict(resized,configs=0.5,operators=op)
