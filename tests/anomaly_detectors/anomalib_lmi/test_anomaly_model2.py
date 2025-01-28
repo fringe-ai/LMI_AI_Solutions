@@ -132,7 +132,10 @@ def test_warmup_api(add_root_path):
 
 def test_model(add_root_path):
     ad = AnomalyModel2(MODEL_PATH,224,224,'resize')
-    ad.test(DATA_PATH, OUTPUT_PATH)
+    ad.test(DATA_PATH, os.path.join(OUTPUT_PATH,'tile-resize'))
+    
+    ad = AnomalyModel2(MODEL_PATH,224,224)
+    ad.test(DATA_PATH, os.path.join(OUTPUT_PATH,'tile-pad'))
     
     ad = AnomalyModel2(MODEL_PATH)
     ad.test(DATA_PATH, OUTPUT_PATH)
