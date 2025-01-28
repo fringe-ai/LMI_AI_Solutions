@@ -1,7 +1,0 @@
-73130f3 updated gadget utils to inspection utils
-d2eae5e updated gadget utils to inspection utils
-2137861 updated
-b3da6ef updated tests
-d4b6f2a updated tests to be a single file for packagaged vs not
-b4d8508 updated models.py
-5913ad7 updated tests
