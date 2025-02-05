@@ -31,7 +31,7 @@ def add_root_path(request):
         logger.info("Skipping adding root path to sys.path")
 
 from detectron2_lmi.model import Detectron2Model
-from core.object_detector import ObjectDetector
+from od_core.object_detector import ObjectDetector
 
 with open('tests/assets/coco_class_names.txt','r') as f:
     classnames = f.readlines()

@@ -8,4 +8,4 @@ version = "0.0.0"
 description = "LMI AI Solutions anomaly detectors"
 
 [tool.setuptools]
-packages = ["anomalib_lmi", "core"]
+packages = ["anomalib_lmi", "ad_core"]

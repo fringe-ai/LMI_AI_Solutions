@@ -20,7 +20,7 @@ def add_root_path(request):
         logger.info("Skipping adding root path to sys.path")
 
 from anomalib_lmi.anomaly_model import AnomalyModel
-from core.anomaly_detector import AnomalyDetector
+from ad_core.anomaly_detector import AnomalyDetector
 
 
 logging.basicConfig()

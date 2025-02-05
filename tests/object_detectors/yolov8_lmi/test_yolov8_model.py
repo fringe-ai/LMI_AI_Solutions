@@ -24,7 +24,7 @@ def add_root_path(request):
 
 import gadget_utils.pipeline_utils as pipeline_utils
 from yolov8_lmi.model import Yolov8, Yolov8Obb, Yolov8Pose
-from core.object_detector import ObjectDetector
+from od_core.object_detector import ObjectDetector
 
 
 logging.basicConfig()

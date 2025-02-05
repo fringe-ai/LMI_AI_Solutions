@@ -23,7 +23,7 @@ def add_root_path(request):
 
 import gadget_utils.pipeline_utils as pipeline_utils
 from ultralytics_lmi.yolo.model import Yolo, YoloObb, YoloPose
-from core.object_detector import ObjectDetector
+from od_core.object_detector import ObjectDetector
 
 
 logging.basicConfig()

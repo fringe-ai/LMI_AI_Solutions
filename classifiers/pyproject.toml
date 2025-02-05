@@ -9,4 +9,4 @@ description = "LMI AI Solutions classifiers"
 
 
 [tool.setuptools]
-packages = ["ultralytics_lmi", "yolov8_lmi", "core", "detectron2_lmi"]
+packages = ["yolov8_cls"]

@@ -27,7 +27,7 @@ def add_root_path(request):
 
 
 from anomalib_lmi.anomaly_model2 import AnomalyModel2
-from core.anomaly_detector import AnomalyDetector
+from ad_core.anomaly_detector import AnomalyDetector
 from gadget_utils import pipeline_utils
 
 
