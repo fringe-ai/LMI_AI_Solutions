@@ -5,10 +5,11 @@ import numpy as np
 import logging
 
 #LMI packages
-from label_utils.shapes import Rect, Mask, Keypoint, Brush
-from label_utils.csv_utils import load_csv, write_to_csv
+from dataset_utils.representations import Dataset, File, AnnotationType, Box, MaskType, Mask, Point
+# from label_utils.shapes import Rect, Mask, Keypoint, Brush
+# from label_utils.csv_utils import load_csv, write_to_csv
 from gadget_utils.pipeline_utils import fit_array_to_size
-from system_utils.path_utils import get_relative_paths
+# from system_utils.path_utils import get_relative_paths
 
 
 logging.basicConfig()
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-def pad_image_with_csv(input_path, csv_path, output_path, output_imsize, save_bg_images, append_to_csv, recursive):
+def pad_image_with_json(input_path, json_path, output_path, output_imsize, save_bg_images, append_to_csv, recursive):
     """
     pad/crop the image to the size [W,H] and modify its annotations accordingly
     arguments:
@@ -26,26 +27,30 @@ def pad_image_with_csv(input_path, csv_path, output_path, output_imsize, save_bg
     """
     if not os.path.isdir(input_path):
         raise Exception(f'input image folder does not exist: {input_path}')
-    fname_to_shape, _ = load_csv(csv_path, input_path)
 
     W,H = output_imsize
     cnt_bg = 0
     cnt_warnings = 0
     output_shapes = {}
     
-    files = get_relative_paths(input_path, recursive)
-    for f in files:
-        p = os.path.join(input_path, f)
-        im_name = os.path.basename(f)
+    dataset = Dataset.load(json_path)
+    base_prefix = dataset.base_path
+    
+    for f in dataset.files:
+        file_path = f.relative_path(base_prefix)
+        p = os.path.join(input_path, file_path)
+        im_name = os.path.basename(file_path)
         im = cv2.imread(p)
         h,w = im.shape[:2]
         
         # found bg image
-        if im_name not in fname_to_shape:
+        if not f.has_annotations:
             if not save_bg_images:
                 continue
             cnt_bg += 1
-            logger.info(f'Input file: {im_name} with size of [{w},{h}] has no labels')
+            logger.info(f'{im_name}: wh of [{w},{h}] has no labels')
+        else:
+            logger.info(f'{im_name}: wh of [{w},{h}]')
         
         # pad image
         im_out,pad_l,_,pad_t,_ = fit_array_to_size(im,W,H)
@@ -57,9 +62,14 @@ def pad_image_with_csv(input_path, csv_path, output_path, output_imsize, save_bg
         cv2.imwrite(output_file,im_out)
 
         #pad shapes
-        shapes = fname_to_shape[im_name]
-        fit_shapes_to_size(shapes, pad_l, pad_t)
-        shapes,is_warning = clip_shapes(shapes, W, H)
+        
+        fit_shapes_to_size(f.annotations, pad_l, pad_t)
+        delete_ids,is_warning = clip_shapes(f.annotations, W, H)
+        f.annotations = [shape for shape in f.annotations if shape.id not in delete_ids]
+
+        # update the dataset annotaions
+        
+        
         if is_warning:
             cnt_warnings += 1
 
@@ -72,7 +82,6 @@ def pad_image_with_csv(input_path, csv_path, output_path, output_imsize, save_bg
     if cnt_warnings:
         logger.warning(f'found {cnt_warnings} images with labels that is either removed entirely, or chopped to fit the new size')
     output_csv = os.path.join(output_path, "labels.csv")
-    write_to_csv(output_shapes, output_csv, overwrite=not append_to_csv)
     
 
 def clip_shapes(shapes, W, H):
@@ -83,43 +92,61 @@ def clip_shapes(shapes, W, H):
     to_del = []
     is_warning = False
     shapes = np.array(shapes)
+    delete_ids = []
     for i,shape in enumerate(shapes):
         is_del = 0
-        if isinstance(shape, Rect):
-            box = np.array(shape.up_left+shape.bottom_right)
+        if shape.type == AnnotationType.BOX:
+            # box = np.array(shape.up_left+shape.bottom_right)
+            
+            box = shape.annotation.to_numpy()
             new_box = np.clip(box, a_min=0, a_max=[W,H,W,H])
-            shapes[i].up_left = new_box[:2]
-            shapes[i].bottom_right = new_box[2:]
+            
             if np.all(new_box==0) or new_box[0]==new_box[2] or new_box[1]==new_box[3]:
                 is_del = 1
+                delete_ids.append(shape.id)
                 logger.warning(f'bbox {box} is outside of the size [{W},{H}]')
             elif (np.any(new_box==W) and np.all(box!=W)) or (np.any(new_box==H) and np.all(box!=H)) \
                     or (np.any(new_box==0) and np.all(box!=0)):
                 logger.warning(f'bbox {box} is chopped to fit the size [{W}, {H}]')
                 is_warning = True
-        elif isinstance(shape, (Mask,Brush)):
-            X,Y = np.array(shape.X), np.array(shape.Y)
+                # update the annotation
+                
+                shape.annotation = Box(*new_box)
+        
+        elif shape.type == AnnotationType.MASK:
+            X,Y = shape.annotation.coords()
             new_X = np.clip(X, a_min=0, a_max=W)
             new_Y = np.clip(Y, a_min=0, a_max=H)
             shapes[i].X,shapes[i].Y = new_X,new_Y
             if np.all(new_X==W) or np.all(new_Y==H) or np.all(new_X==0) or np.all(new_Y==0):
                 is_del = 1
+                delete_ids.append(shape.id)
                 logger.warning(f'polygon {[(x,y) for x,y in zip(new_X,new_Y)]} is outside of the size [{W},{H}]')
             elif (np.any(new_X==W) and np.all(X!=W)) or (np.any(new_Y==H) and np.all(Y!=H)) \
                 or (np.any(new_X==0) and np.all(X!=0)) or (np.any(new_Y==0) and np.all(Y!=0)):
                 logger.warning(f'polygon {[(x,y) for x,y in zip(new_X,new_Y)]} is chopped to fit the size [{W}, {H}]')
                 is_warning = True
-        elif isinstance(shape, Keypoint):
-            x,y = shape.x, shape.y
+                if shape.annotation.type == MaskType.BITMASK:
+                    img = np.zeros((H,W),dtype=np.uint8)
+                    cv2.fillPoly(img, [np.array(list(zip(new_X,new_Y))).astype(int)], 1)
+                    shape.annotation = Mask(type=MaskType.BITMASK, data=img, w=W, h=H)
+                else:
+                    shape.annotation = Mask(type=MaskType.POLYGON, mask=[(x,y) for x,y in zip(new_X,new_Y)])
+                
+        elif shape.type == AnnotationType.KEYPOINT:
+            x,y = shape.annotation.x, shape.annotation.y
             if x<0 or x>W or y<0 or y>H:
                 is_del = 1
                 logger.warning(f'keypoint ({x},{y}) is outside of the size [{W},{H}]')
+                delete_ids.append(shape.id)
+            else:
+                shape.annotation.x, shape.annotation.y = x,y
+                
         if is_del:
             is_warning = True
-            to_del.append(i)
+            # to_del.append(i)
             
-    new_shapes = np.delete(shapes,to_del,axis=0)
-    return new_shapes.tolist(), is_warning
+    return delete_ids, is_warning
     
 
 def fit_shapes_to_size(shapes, pad_l, pad_t):

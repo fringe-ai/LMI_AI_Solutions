@@ -6,17 +6,23 @@ import numpy as np
 import collections
 import glob
 from label_studio_sdk.converter.brush import decode_rle
+import base64
+from dataset_utils.representations import Box, Mask, Point, Label, Annotation, File, MaskType, AnnotationType, Dataset, FileAnnotations,Link
+from dataset_utils.mask_encoder import mask2rle, rle2mask
+import shutil
+import cv2
 
-from label_utils.csv_utils import write_to_csv
-from label_utils.shapes import Rect, Mask, Keypoint, Brush
+# from label_utils.csv_utils import write_to_csv
+# from label_utils.shapes import Rect, Mask, Keypoint, Brush
 from label_utils.bbox_utils import convert_from_ls
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-LABEL_NAME = 'labels.csv'
-PRED_NAME = 'preds.csv'
+LABEL_NAME = 'labels.json'
+PRED_NAME = 'preds.json'
+IMAGES_DIR = 'images'
 
 
 
@@ -38,32 +44,30 @@ def lst_to_shape(result:dict, fname:str, load_confidence=False):
         x,y,w,h,angle = convert_from_ls(result)
         x1,y1,w,h = list(map(int,[x,y,w,h]))
         x2,y2 = x1+w, y1+h
-        rect = Rect(im_name=fname,category=label,up_left=[x1,y1],bottom_right=[x2,y2],angle=angle,confidence=conf)
-        return rect
+        box = Box(x_min=x1,y_min=y1,x_max=x2,y_max=y2,angle=angle)
+        return box, label, conf, AnnotationType.BOX
     elif result_type=='polygonlabels':
         points=result['value']['points']
         points_np=np.array(points)
-        xs = (points_np[:, 0]/100*result['original_width']).astype(np.int32)
-        ys = (points_np[:, 1]/100*result['original_height']).astype(np.int32)
-        mask = Mask(im_name=fname,category=label,x_vals=xs,y_vals=ys,confidence=conf)
-        return mask
+        points_np[:, 0] /=100*result['original_width']
+        points_np[:, 1] /=100*result['original_height']
+        return Mask(mask=points_np.astype(int).tolist(),type=MaskType.POLYGON), label, conf, AnnotationType.MASK
     elif result_type=='brushlabels':
         rle = result['value']['rle']
         h,w = result['original_height'],result['original_width']
         img = decode_rle(rle).reshape(h,w,4)[:,:,3]
-        mask = img>128
-        brush = Brush(im_name=fname,category=label,mask=mask,confidence=conf)
-        return brush
+        mask = img > 128
+        mask_rle = mask2rle(mask)
+        return Mask(mask=mask_rle,type=MaskType.BITMASK, h=h, w=w), label, conf, AnnotationType.MASK
     elif result_type=='keypointlabels':
         dt = result['value']
         x,y = dt['x']/100*result['original_width'],dt['y']/100*result['original_height']
-        kp = Keypoint(im_name=fname,category=label,x=x,y=y,confidence=conf)
-        return kp
+        return Point(x=x,y=y,z=0.0), label, conf, AnnotationType.KEYPOINT
     else:
         logger.warning(f'unsupported result type: {result_type}, skip')
 
 
-def get_annotations_from_json(path_json):
+def get_annotations_from_json(path_json, images_dir, output_image_dir):
     """read annotation from label studio json file.
 
     Args:
@@ -77,10 +81,14 @@ def get_annotations_from_json(path_json):
     else:
         json_files=glob.glob(os.path.join(path_json,'*.json'))
 
-    annots = collections.defaultdict(list)
-    preds = collections.defaultdict(list)
+    labels : list[Label] = []
+    annotations: list[FileAnnotations] = []
+    file_id = 0
+    label_dict = {}
+    
     for path_json in json_files:
         logger.info(f'Extracting labels from: {path_json}')
+        logger.info(f'dir_path : {images_dir}')
         with open(path_json) as f:    
             l = json.load(f)
 
@@ -88,12 +96,24 @@ def get_annotations_from_json(path_json):
         cnt_image = 0
         cnt_pred = 0
         cnt_wrong = 0
+        
+        # collect all the files
+        files = [
+            dt['data']['image'] for dt in l if 'data' in dt
+        ]
+        common_prefix = os.path.dirname(os.path.commonprefix(files))
+        logger.info(f'common prefix: {common_prefix}')
+        
+        # find the common prefix between the image path
+        
+        
         for dt in l:
             # load file name
             if 'data' not in dt:
                 raise Exception('missing "data" in json file. Ensure that the label studio export format is not JSON-MIN.')
             f = dt['data']['image'] # image web path
-            fname = os.path.basename(f)
+            file_annotations : list[Annotation] = []
+            pred_annotations : list[Annotation] = []
             
             if 'annotations' in dt:
                 cnt = 0
@@ -102,52 +122,104 @@ def get_annotations_from_json(path_json):
                     if num_labels>0:
                         cnt += 1
                     for result in annot['result']:
-                        shape = lst_to_shape(result,fname)
+                        shape, label, conf, annot_type = lst_to_shape(result,f)
                         if shape is not None:
-                            annots[fname].append(shape)
+                            if label not in label_dict:
+                                label_id = len(label_dict)
+                                label_dict[label] = label_id
+                                labels.append(Label(id=str(label_id), name=label))
+                            else:
+                                label_id = label_dict[label]  
+                            file_annotations.append(Annotation(id=str(cnt_anno), label_id=str(label_id), type=annot_type, annotation=shape, confidence=conf, link=Link()))
+                            mask = shape.mask
+                            if mask is not None:
+                                decoded_mask = rle2mask(mask, shape.h, shape.w)
+                                cv2.imwrite(f'/app/data/input/mar25/images/{os.path.basename(f)}', decoded_mask*255)
                             cnt_anno += 1
+                            
+                            
                             
                     if 'prediction' in annot and 'result' in annot['prediction']:
                         for result in annot['prediction']['result']:
-                            shape = lst_to_shape(result,fname,load_confidence=True)
+                            shape, label, conf, annot_type = lst_to_shape(result,f,load_confidence=True)
                             if shape is not None:
-                                preds[fname].append(shape)
+                                if label not in label_dict:
+                                    label_id = len(label_dict)
+                                    label_dict[label] = label_id
+                                    labels.append(Label(id=str(label_id), name=label))
+                                else:
+                                    label_id = label_dict[label]
+                                pred_annotations.append(Annotation(id=str(cnt_pred), label_id=str(label_id), type=annot_type, annotation=shape, confidence=conf, link=Link()))
                                 cnt_pred += 1
                 if cnt>0:
                     cnt_image += 1
                 if cnt==0 and dt['total_annotations']>0:
                     cnt_wrong += 1
-                    logger.warning(f'found 0 annotation in {fname}, but lst claims total_annotations = {dt["total_annotations"]}')
+                    logger.warning(f'found 0 annotation in {f}, but lst claims total_annotations = {dt["total_annotations"]}')
 
             if 'predictions' in dt:
                 for pred in dt['predictions']:
                     if isinstance(pred, dict):
                         for result in pred['result']:
-                            shape = lst_to_shape(result,fname,load_confidence=True)
+                            shape, label, conf, annot_type = lst_to_shape(result,f,load_confidence=True)
                             if shape is not None:
-                                preds[fname].append(shape)
+                                if label not in label_dict:
+                                    label_id = len(label_dict)
+                                    label_dict[label] = label_id
+                                    labels.append(Label(id=str(label_id), name=label))
+                                else:
+                                    label_id = label_dict[label]
+                                pred_annotations.append(Annotation(id=str(cnt_pred), label_id=str(label_id), type=annot_type, annotation=shape, confidence=conf, link=Link()))
                                 cnt_pred += 1
+                                
+            file_name = os.path.basename(f)
+            ext = file_name.split('.')[-1]
+            new_file_name = file_name.replace(f'.{ext}', f'_{file_id}.{ext}')        # remove the common prefix
+            old_file_path = f.replace(common_prefix, '')
+            old_file_path = old_file_path[1:] if old_file_path[0]=='/' else old_file_path
+            updated_fp = os.path.join(output_image_dir, new_file_name)
+            if os.path.exists(os.path.join(images_dir, old_file_path)):
+                logger.info(f'copying file: {old_file_path} to {updated_fp}')
+                shutil.copy(os.path.join(images_dir, old_file_path), updated_fp)
+            else:
+                raise Exception(f'file not found: {old_file_path}')
+            image = cv2.imread(updated_fp, cv2.IMREAD_UNCHANGED)
+            height, width = image.shape[:2]
+            annotations.append(FileAnnotations(file=File(id=str(file_id), path=updated_fp, height=height, width=width), annotations=file_annotations, predictions=pred_annotations))
+            file_id += 1
 
         logger.info(f'{cnt_image} out of {len(l)} images have annotations')
         if cnt_wrong>0:
             logger.info(f'{cnt_wrong} images with total_annotations > 0, but found 0 annotation')
         logger.info(f'total {cnt_anno} annotations')
         logger.info(f'total {cnt_pred} predictions')
-    return annots, preds
-
+    return annotations, labels
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser('Convert label studio json file to csv format')
     ap.add_argument('-i', '--path_json', required=True, help='the directory of label-studio json files')
+    ap.add_argument('-imgs', '--path_imgs', required=False, help='the directory of images')
     ap.add_argument('-o', '--path_out', required=True, help='output directory')
     args = ap.parse_args()
-    
-    annots,preds = get_annotations_from_json(args.path_json)
     
     if os.path.isfile(args.path_out):
         raise Exception('The output path should be a directory')
     
     if not os.path.isdir(args.path_out):
         os.makedirs(args.path_out)
-    write_to_csv(annots, os.path.join(args.path_out, LABEL_NAME))
-    write_to_csv(preds, os.path.join(args.path_out, PRED_NAME))
+    images_dir = os.path.join(args.path_out, IMAGES_DIR)
+    if not os.path.isdir(images_dir):
+        os.makedirs(images_dir)
+    
+    if args.path_imgs is None:
+        args.path_imgs = os.path.dirname(args.path_json)
+    
+    
+    annotations, labels = get_annotations_from_json(args.path_json, args.path_imgs, output_image_dir=images_dir)
+    
+    
+    
+    annotations = Dataset(labels=labels, files=annotations)
+    annotations.save(os.path.join(images_dir, LABEL_NAME))
+    
+    
