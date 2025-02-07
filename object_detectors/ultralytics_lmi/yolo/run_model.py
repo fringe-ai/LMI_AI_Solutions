@@ -67,7 +67,7 @@ if __name__ == '__main__':
     logger.info(f'warmup proc time -> {t2-t1:.4f}')
         
     fname_to_shapes = collections.defaultdict(list)
-    batches = get_img_path_batches(batch_size=BATCH_SIZE, img_dir=args.path_imgs)
+    batches = get_img_path_batches(batch_size=BATCH_SIZE, img_dir=args.path_imgs, fmt='jpg') + get_img_path_batches(batch_size=BATCH_SIZE, img_dir=args.path_imgs, fmt='png')
     logger.info(f'loaded {len(batches)} with a batch size of {BATCH_SIZE}')
 
     for batch in tqdm(batches):
@@ -86,7 +86,7 @@ if __name__ == '__main__':
             save_path = os.path.join(args.path_out,fname)
             if args.resize:
                 
-                im1 = resize_image(im=im0,H=args.resize[0], W=args.resize[1])
+                im1 = resize_image(im=im0,H=args.resize[0] if args.resize[0] != 0 else None, W=args.resize[1] if args.resize[1] != 0 else None)
                 logger.warning(f"{im1.shape}, resizing")
                 operators.append({
                     'resize': [im1.shape[1],im1.shape[0], im0.shape[1], im0.shape[0]]

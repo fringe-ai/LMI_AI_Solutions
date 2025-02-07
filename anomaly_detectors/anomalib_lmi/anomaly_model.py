@@ -8,7 +8,7 @@ import albumentations as A
 
 from .base import Anomalib_Base
 import gadget_utils.pipeline_utils as pipeline_utils
-from anomaly_detector import AnomalyDetector
+from ad_core.anomaly_detector import AnomalyDetector
 
 
 logging.basicConfig()

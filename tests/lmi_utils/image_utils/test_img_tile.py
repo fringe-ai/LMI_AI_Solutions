@@ -11,15 +11,22 @@ import subprocess
 # add path to the repo
 PATH = pathlib.Path(__file__)
 ROOT = PATH.parents[3]
-sys.path.append(os.path.join(ROOT, 'lmi_utils'))
 
-from image_utils.img_tile import to_tiles,to_images,ScaleMode
-from system_utils import path_utils
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
+@pytest.fixture()
+def add_root_path(request):
+    if request.config.getoption("--test-package") is False:
+        sys.path.append(os.path.join(ROOT, 'lmi_utils'))
+        logger.info(f"Added {ROOT} to sys.path")
+    else:
+        logger.info("Skipping adding root path to sys.path")
+
+from image_utils.img_tile import to_tiles,to_images,ScaleMode
+from system_utils import path_utils
 
 PATH_IMG = ROOT/'tests/assets/images/dota'
 
@@ -42,7 +49,7 @@ def load_imgs(im_dir, recursive=True):
         ([224,256],[56,64],[224,256])
     ]
 )
-def test_cases(tile_hw, stride_hw, expected_tile_hw):
+def test_cases(tile_hw, stride_hw, expected_tile_hw, add_root_path):
     imgs = load_imgs(PATH_IMG)
     with tempfile.TemporaryDirectory() as tmpdir:
         to_tiles(PATH_IMG,tmpdir,tile_hw,stride_hw,recursive=True)
@@ -65,7 +72,7 @@ def test_cases(tile_hw, stride_hw, expected_tile_hw):
         ([224,256],[56,64])
     ]
 )                
-def test_interpolation(tile,stride):
+def test_interpolation(tile,stride, add_root_path):
     with tempfile.TemporaryDirectory() as tmp1:
         with tempfile.TemporaryDirectory() as tmp2:
             to_tiles(PATH_IMG,tmp1,tile,stride,mode=ScaleMode.INTERPOLATION)
@@ -78,7 +85,7 @@ def test_interpolation(tile,stride):
                 assert list(im.shape[-2:])==tile
 
 
-def test_cmds():
+def test_cmds(add_root_path):
     imgs = load_imgs(PATH_IMG)
     my_env = os.environ.copy()
     my_env['PYTHONPATH'] = f'$PYTHONPATH:{str(ROOT)}/lmi_utils'

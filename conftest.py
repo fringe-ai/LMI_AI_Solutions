@@ -7,6 +7,14 @@ import sys
 
 logging.basicConfig()
 
+def pytest_addoption(parser):
+    parser.addoption(
+        "--test-package",
+        action="store",
+        default=False,
+        help="Run packaging tests",
+    )
+
 def pytest_configure(config):
     # Set up logging specifically for pytest_configure
     logger = logging.getLogger(__name__)

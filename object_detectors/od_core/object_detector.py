@@ -1,4 +1,4 @@
-from od_base import ODBase
+from .od_base import ODBase
 import json
 
 class ObjectDetector(ODBase):
