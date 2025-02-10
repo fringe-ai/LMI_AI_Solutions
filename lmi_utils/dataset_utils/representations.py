@@ -62,7 +62,7 @@ class Box(Base):
     y_max: float
     angle: float
 
-    def __post_init__(self):
+    def __init__(self):
         # Ensure all values are floats.
         self.x_min = float(self.x_min)
         self.y_min = float(self.y_min)
