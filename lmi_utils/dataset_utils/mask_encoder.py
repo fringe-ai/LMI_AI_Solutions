@@ -29,4 +29,4 @@ def rle2mask(mask_rle: str, h, w, label=1):
     img = np.zeros(h * w, dtype=np.uint8)
     for lo, hi in zip(starts, ends):
         img[lo:hi] = label
-    return img.reshape((h,w))  # Needed to align to RLE direction
+    return img.reshape((h,w))

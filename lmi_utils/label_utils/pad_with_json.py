@@ -6,10 +6,7 @@ import logging
 
 #LMI packages
 from dataset_utils.representations import Dataset, File, AnnotationType, Box, MaskType, Mask, Point
-# from label_utils.shapes import Rect, Mask, Keypoint, Brush
-# from label_utils.csv_utils import load_csv, write_to_csv
 from gadget_utils.pipeline_utils import fit_array_to_size
-# from system_utils.path_utils import get_relative_paths
 
 
 logging.basicConfig()
@@ -62,8 +59,8 @@ def pad_image_with_json(input_path, json_path, output_path, output_imsize, save_
         cv2.imwrite(output_file,im_out)
 
         #pad shapes
-        
-        fit_shapes_to_size(f.annotations, pad_l, pad_t)
+        f.annotations = fit_shapes_to_size(f.annotations,pad_l,pad_t, pad_h=H, pad_w=W)
+            
         delete_ids,is_warning = clip_shapes(f.annotations, W, H)
         f.annotations = [shape for shape in f.annotations if shape.id not in delete_ids]
 
@@ -73,15 +70,19 @@ def pad_image_with_json(input_path, json_path, output_path, output_imsize, save_
         if is_warning:
             cnt_warnings += 1
 
-        #modify the image name 
-        for shape in shapes:
-            shape.im_name = out_name
-        output_shapes[out_name] = shapes
+        # #modify the image name 
+        # for shape in shapes:
+        #     shape.im_name = out_name
+        # output_shapes[out_name] = shapes
+        height = im_out.shape[0]
+        width = im_out.shape[1]
+        f.update_file(File(path=output_file, width=width, height=height, id=f.id))
     if cnt_bg:
         logger.info(f'found {cnt_bg} images with no labels. These images will be used as background training data for YOLO.')
     if cnt_warnings:
         logger.warning(f'found {cnt_warnings} images with labels that is either removed entirely, or chopped to fit the new size')
-    output_csv = os.path.join(output_path, "labels.csv")
+    output_json = os.path.join(output_path, "labels.json")
+    dataset.save(output_json)
     
 
 def clip_shapes(shapes, W, H):
@@ -89,16 +90,14 @@ def clip_shapes(shapes, W, H):
     description:
         clip the shapes so that they are fit in the target size [W,H]
     """
-    to_del = []
     is_warning = False
     shapes = np.array(shapes)
     delete_ids = []
     for i,shape in enumerate(shapes):
         is_del = 0
         if shape.type == AnnotationType.BOX:
-            # box = np.array(shape.up_left+shape.bottom_right)
             
-            box = shape.annotation.to_numpy()
+            box = shape.value.to_numpy()
             new_box = np.clip(box, a_min=0, a_max=[W,H,W,H])
             
             if np.all(new_box==0) or new_box[0]==new_box[2] or new_box[1]==new_box[3]:
@@ -109,47 +108,46 @@ def clip_shapes(shapes, W, H):
                     or (np.any(new_box==0) and np.all(box!=0)):
                 logger.warning(f'bbox {box} is chopped to fit the size [{W}, {H}]')
                 is_warning = True
-                # update the annotation
                 
-                shape.annotation = Box(*new_box)
+                shape.value = Box(*new_box)
         
         elif shape.type == AnnotationType.MASK:
-            X,Y = shape.annotation.coords()
+            X,Y = shape.value.coords()
             new_X = np.clip(X, a_min=0, a_max=W)
             new_Y = np.clip(Y, a_min=0, a_max=H)
-            shapes[i].X,shapes[i].Y = new_X,new_Y
             if np.all(new_X==W) or np.all(new_Y==H) or np.all(new_X==0) or np.all(new_Y==0):
                 is_del = 1
                 delete_ids.append(shape.id)
-                logger.warning(f'polygon {[(x,y) for x,y in zip(new_X,new_Y)]} is outside of the size [{W},{H}]')
+                # logger.warning(f'polygon {[(x,y) for x,y in zip(new_X,new_Y)]} is outside of the size [{W},{H}]')
+                logger.warning(f'polygon {shape.id} is outside of the size [{W},{H}]')
+
             elif (np.any(new_X==W) and np.all(X!=W)) or (np.any(new_Y==H) and np.all(Y!=H)) \
                 or (np.any(new_X==0) and np.all(X!=0)) or (np.any(new_Y==0) and np.all(Y!=0)):
-                logger.warning(f'polygon {[(x,y) for x,y in zip(new_X,new_Y)]} is chopped to fit the size [{W}, {H}]')
+                logger.warning(f'polygon {shape.id} is chopped to fit the size [{W}, {H}]')
                 is_warning = True
-                if shape.annotation.type == MaskType.BITMASK:
+                if shape.value.type == MaskType.BITMASK:
                     img = np.zeros((H,W),dtype=np.uint8)
                     cv2.fillPoly(img, [np.array(list(zip(new_X,new_Y))).astype(int)], 1)
-                    shape.annotation = Mask(type=MaskType.BITMASK, data=img, w=W, h=H)
+                    shape.value = Mask(type=MaskType.BITMASK, mask=img, w=W, h=H)
                 else:
-                    shape.annotation = Mask(type=MaskType.POLYGON, mask=[(x,y) for x,y in zip(new_X,new_Y)])
+                    shape.value = Mask(type=MaskType.POLYGON, mask=[(x,y) for x,y in zip(new_X,new_Y)])
                 
         elif shape.type == AnnotationType.KEYPOINT:
-            x,y = shape.annotation.x, shape.annotation.y
+            x,y = shape.value.x, shape.value.y
             if x<0 or x>W or y<0 or y>H:
                 is_del = 1
                 logger.warning(f'keypoint ({x},{y}) is outside of the size [{W},{H}]')
                 delete_ids.append(shape.id)
             else:
-                shape.annotation.x, shape.annotation.y = x,y
+                shape.value.x, shape.value.y = x,y
                 
         if is_del:
             is_warning = True
-            # to_del.append(i)
             
     return delete_ids, is_warning
     
 
-def fit_shapes_to_size(shapes, pad_l, pad_t):
+def fit_shapes_to_size(shapes, pad_l, pad_t, pad_h, pad_w):
     """
     description:
         add the left and top paddings to the shapes, modify in-place
@@ -158,25 +156,17 @@ def fit_shapes_to_size(shapes, pad_l, pad_t):
         pad_l(int): the left paddings
         pad_t(int): the top paddings 
     """
-    for shape in shapes:
-        if isinstance(shape, Rect):
-            shape.up_left[0] += pad_l
-            shape.up_left[1] += pad_t
-            shape.bottom_right[0] += pad_l
-            shape.bottom_right[1] += pad_t
-        elif isinstance(shape, (Mask,Brush)):
-            shape.X = [v+pad_l for v in shape.X]
-            shape.Y = [v+pad_t for v in shape.Y]
-        elif isinstance(shape, Keypoint):
-            shape.x += pad_l
-            shape.y += pad_t
+    
+    for annot in shapes:
+        annot.value = annot.value.pad(pad_h, pad_w, pad_l, pad_t)   
+    return shapes 
     
 
 
 if __name__=="__main__":
     ap = argparse.ArgumentParser(description='Pad or crop images with csv to output size.')
     ap.add_argument('--path_imgs', '-i', required=True, help='the path to the images')
-    ap.add_argument('--path_csv', default='labels.csv', help='[optinal] the path of a csv file that corresponds to path_imgs, default="labels.csv" in path_imgs')
+    ap.add_argument('--path_csv', default='labels.json', help='[optinal] the path of a csv file that corresponds to path_imgs, default="labels.json" in path_imgs')
     ap.add_argument('--path_out','-o', required=True, help='the output path')
     ap.add_argument('--wh', required=True, help='the output image size [w,h], w and h are separated by a comma')
     ap.add_argument('--bg', action='store_true', help='save background images with no labels')
@@ -185,7 +175,7 @@ if __name__=="__main__":
     args = vars(ap.parse_args())
 
     path_imgs = args['path_imgs']
-    path_csv = args['path_csv'] if args['path_csv']!='labels.csv' else os.path.join(path_imgs, args['path_csv'])
+    path_csv = args['path_csv'] if args['path_csv']!='labels.json' else os.path.join(path_imgs, args['path_csv'])
     if not os.path.isfile(path_csv):
         raise Exception(f'Not found file: {path_csv}. Please create an empty csv file, if there are no labels.')
     output_path=args['path_out']
@@ -197,4 +187,6 @@ if __name__=="__main__":
     if not os.path.isdir(output_path):
         os.makedirs(output_path)
     
-    pad_image_with_csv(path_imgs, path_csv, output_path, output_imsize, args['bg'], args['append'], args['recursive'])
+    pad_image_with_json(path_imgs, path_csv, output_path, output_imsize, args['bg'], args['append'], args['recursive'])
+    
+    

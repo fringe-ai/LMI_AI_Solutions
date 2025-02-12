@@ -8,6 +8,9 @@ from gadget_utils.pipeline_utils import fit_array_to_size
 import os
 import numpy as np
 import logging
+from label_utils.bbox_utils import rotate
+import cv2
+import uuid  # used to generate unique annotation ids
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -62,29 +65,30 @@ class Box(Base):
     y_max: float
     angle: float
 
-    def __init__(self):
-        # Ensure all values are floats.
-        self.x_min = float(self.x_min)
-        self.y_min = float(self.y_min)
-        self.x_max = float(self.x_max)
-        self.y_max = float(self.y_max)
-        self.angle = float(self.angle)
+    def __init__(self, x_min, y_min, x_max, y_max, angle):
+        self.x_min = float(x_min)
+        self.y_min = float(y_min)
+        self.x_max = float(x_max)
+        self.y_max = float(y_max)
+        self.angle = float(angle)
 
-        # Validate that the minimum values are less than the maximum values.
         if self.x_min > self.x_max:
             raise ValueError("x_min must be less than x_max")
         if self.y_min > self.y_max:
             raise ValueError("y_min must be less than y_max")
     
-    def resize_by_scale(self, rx, ry):
-        # Fixed attribute names (changed from self.xmax -> self.x_max, etc.)
+    def resize(self, h=None, w=None):
+        if h is None and w is None:
+            raise Exception('Both height and width cannot be None')
+        rx = w/self.w if w is not None else 1
+        ry = h/self.h if h is not None else 1
         self.x_max = self.x_max * rx
         self.x_min = self.x_min * rx
         self.y_max = self.y_max * ry
         self.y_min = self.y_min * ry
         return self
     
-    def pad(self, pl=0, pt=0, pr=0, pb=0):
+    def pad(self, pad_h=0, pad_w=0, pl=0, pt=0):
         self.x_min += pl
         self.y_min += pt
         self.x_max += pl
@@ -92,9 +96,39 @@ class Box(Base):
         return self
     
     def to_numpy(self):
-        return np.array([self.x_min, self.y_min, self.x_max, self.y_max])
+        return np.array([self.x_min, self.y_min, self.x_max, self.y_max, self.angle])
     
-        
+    def coords(self):
+        return self.x_min, self.y_min, self.x_max, self.y_max, self.angle
+    
+    def to_yolo(self, h, w):
+        width = self.x_max - self.x_min
+        height = self.y_max - self.y_min
+        if self.angle > 0:
+            rotated_coords = rotate(self.x_min, self.x_max, w, h, self.angle, rot_center='up_left', unit='degree')
+            xyxy = [
+               [pt[0] / w, pt[1] / h] for pt in rotated_coords
+            ]
+            return xyxy
+        else:
+            return [[self.x_min / w, self.y_min / h, width / w, height / h]]
+    
+    def to_mask(self, **kwargs):
+        if kwargs.get('mask_type') == MaskType.BITMASK:
+            mask = np.zeros((kwargs.get('h'), kwargs.get('w')), dtype=np.uint8)
+            mask[int(self.y_min):int(self.y_max), int(self.x_min):int(self.x_max)] = 1
+            return Mask(
+                mask=mask2rle(mask),
+                type=MaskType.BITMASK,
+                h=kwargs.get('h'),
+                w=kwargs.get('w'),
+            )
+        else:
+            return Mask(
+                mask=[[self.x_min, self.y_min], [self.x_max, self.y_min], [self.x_max, self.y_max], [self.x_min, self.y_max]],
+                type=MaskType.POLYGON
+            )
+          
 
 @dataclass
 class Mask(Base):
@@ -110,18 +144,24 @@ class Mask(Base):
         self.w = w
         if type == MaskType.BITMASK:
             assert self.h > 0 and self.w > 0, "height and width must be provided for BITMASK type"
+            if isinstance(mask, np.ndarray):
+                assert mask.shape == (self.h, self.w), "mask shape must match height and width"
+                self.mask = mask2rle(mask)
         elif type == MaskType.POLYGON:
             assert isinstance(mask, list), "mask must be a list of lists"
+
     
-    def resize_by_scale(self, rx, ry):
+    def resize(self, h=None, w=None):
+        if h is None and w is None:
+            raise Exception('Both height and width cannot be None')
+        rx = w/self.w if w is not None else 1
+        ry = h/self.h if h is not None else 1
+            
         if self.type == MaskType.BITMASK:
             if isinstance(self.mask, str):
-                # convert the mask to a bitmask
                 mask = rle2mask(self.mask, self.h, self.w)
-                # Optionally, cast the new dimensions to int if needed by your resize function
                 tw = int(self.w * rx)
                 th = int(self.h * ry)
-                # resize the mask
                 self.mask = mask2rle(resize(mask, tw, th))
                 self.h = th
                 self.w = tw
@@ -136,7 +176,6 @@ class Mask(Base):
     def pad(self, ph=0, pw=0, pt=0, pl=0):
         if self.type == MaskType.BITMASK:
             if isinstance(self.mask, str):
-                # convert the mask to a bitmask
                 mask = rle2mask(self.mask, self.h, self.w)
                 mask, _, _, _, _ = fit_array_to_size(mask, ph, pw)
                 self.mask = mask2rle(mask)
@@ -145,10 +184,8 @@ class Mask(Base):
                 
         elif self.type == MaskType.POLYGON:
             mask = np.array(self.mask)
-            
             mask[:,0] += pl
             mask[:,1] += pt
-            
             self.mask = mask.tolist()
         return self
 
@@ -174,22 +211,41 @@ class Point(Base):
     y: float
     z: float
     
-    def resize_by_scale(self, rx, ry, rz=1):
+    def resize(self, h=None, w=None, z=None):
+        if h is None and w is None:
+            raise Exception('Both height and width cannot be None')
+        rx = w/self.w if w is not None else 1
+        ry = h/self.h if h is not None else 1
+        rz = z/self.z if z is not None else 1
         self.x = self.x * rx
         self.y = self.y * ry
         if self.z > 0:
             self.z = self.z * rz
         return self
     
-    def pad(self,ph=0, pw=0, pt=0, pl=0):
+    def pad(self, ph=0, pw=0, pt=0, pl=0):
         self.x += pl
         self.y += pt
         return self
+    
+    def to_numpy(self):
+        return np.array([self.x, self.y, self.z])
+    
+    def coords(self):
+        return self.x, self.y, self.z
+    
+    def to_yolo(self, h, w):
+        return [[self.x / w, self.y / h]]
+        
 
 @dataclass
 class Label(Base):
     id: str
-    name: str
+    index: str
+    
+    def __init__(self, id: str, index: Union[str, int]):
+        self.id = id
+        self.index = str(index) if isinstance(index, int) else index
 
 @dataclass
 class Link(Base):
@@ -201,10 +257,11 @@ class Annotation(Base):
     id: str
     label_id: str
     type: AnnotationType
-    annotation: Union[Box, Mask, Point]
+    value: Union[Box, Mask, Point]
     link: Link 
     confidence: float
     iou: float = 0.0
+    
 
 @dataclass
 class File(Base):
@@ -237,11 +294,13 @@ class FileAnnotations(Base):
     def relative_path(self, base_path: str) -> str:
         return os.path.relpath(self.path, base_path)
     
+    def get_filename(self) -> str:
+        return os.path.basename(self.path)
+    
     @property
     def has_annotations(self) -> bool:
         return len(self.annotations) > 0
 
-    # Removed the @property decorator from update_file since it takes an argument.
     def update_file(self, file: File):
         self.id = file.id
         self.path = file.path
@@ -250,23 +309,11 @@ class FileAnnotations(Base):
         return self
 
     def delete_annotation(self, annotation_id: str, list_type: str = "annotations") -> bool:
-        """
-        Delete an annotation by its id from the specified list.
-
-        Args:
-            annotation_id (str): The id of the annotation to delete.
-            list_type (str): The list from which to delete the annotation. 
-                             Use "annotations" (default) or "predictions".
-
-        Returns:
-            bool: True if an annotation was deleted, False otherwise.
-        """
         if list_type not in ["annotations", "predictions"]:
             raise ValueError("list_type must be either 'annotations' or 'predictions'")
         
         target_list = self.annotations if list_type == "annotations" else self.predictions
         
-        # Find the index of the annotation with the matching id
         for index, ann in enumerate(target_list):
             if ann.id == annotation_id:
                 del target_list[index]
@@ -275,7 +322,47 @@ class FileAnnotations(Base):
         
         logger.warning(f"Annotation with id '{annotation_id}' not found in {list_type}.")
         return False
-
+    
+    def get_annotations_by_type(self, annotation_type: AnnotationType, list_type: str = "annotations") -> List[Annotation]:
+        if list_type not in ["annotations", "predictions"]:
+            raise ValueError("list_type must be either 'annotations' or 'predictions'")
+        
+        target_list = self.annotations if list_type == "annotations" else self.predictions
+        return [ann for ann in target_list if ann.type == annotation_type]
+    
+    def update_annotations(self, annotations: List[Annotation], list_type: str = "annotations"):
+        if list_type not in ["annotations", "predictions"]:
+            raise ValueError("list_type must be either 'annotations' or 'predictions'")
+        
+        if list_type == "annotations":
+            self.annotations = annotations
+        else:
+            self.predictions = annotations
+    
+    
+    def assign_keypoints(self):
+        
+        def is_inside_box(point: Point, box: Box):
+            x, y = point
+            x_min, y_min, x_max, y_max, angle = box.coords()
+            return x_min <= x <= x_max and y_min <= y <= y_max
+        
+        boxes = self.get_annotations_by_type(AnnotationType.BOX)
+        for annot in self.annotations:
+            if annot.type == AnnotationType.KEYPOINT:
+                keypoint = annot
+            else:
+                continue
+            assigned = False
+            for box in boxes:
+                if is_inside_box(keypoint.value.coords(), box.value.coords()):
+                    keypoint.link.annotation_id = box.id
+                    assigned = True
+                    break
+            if not assigned:
+                raise Exception('Key point not assigned to any box')
+        return self
+    
 @dataclass
 class Dataset(Base):
     labels: List[Label]
@@ -283,10 +370,7 @@ class Dataset(Base):
     
     @classmethod
     def from_dict(cls, data: dict) -> 'Dataset':
-        # Parse labels
         labels = [Label(**label_dict) for label_dict in data.get('labels', [])]
-
-        # Parse files and their annotations
         files = []
         for file_ann_dict in data.get('files', []):
             # Create File instance
@@ -294,14 +378,11 @@ class Dataset(Base):
             file_obj = File(**tmp)
             annotations = []
             for ann_dict in file_ann_dict.get('annotations', []):
-                # Convert annotation type from string to enum
                 ann_type = AnnotationType(ann_dict['type'])
-                annotation_data = ann_dict['annotation']
-                # Depending on the annotation type, create the correct object
+                annotation_data = ann_dict['value']
                 if ann_type == AnnotationType.BOX:
                     annotation_obj = Box(**annotation_data)
                 elif ann_type == AnnotationType.MASK:
-                    # For Mask, also convert the mask type to MaskType
                     annotation_obj = Mask(
                         type=MaskType(annotation_data['type']),
                         mask=annotation_data['mask'],
@@ -313,24 +394,23 @@ class Dataset(Base):
                 else:
                     raise ValueError(f"Unsupported annotation type: {ann_type}")
 
-                # Convert the 'link_to' key into a Link instance.
-                link_data = ann_dict.get('link_to', {})
+                link_data = ann_dict.get('link', {})
                 link_instance = Link(**link_data) if link_data else Link()
                 
                 annotations.append(Annotation(
                     id=ann_dict['id'],
                     label_id=ann_dict['label_id'],
                     type=ann_type,
-                    annotation=annotation_obj,
+                    value=annotation_obj,
                     link=link_instance,
                     confidence=ann_dict['confidence'],
                     iou=ann_dict.get('iou', 0.0)
                 ))
-            # Optionally, parse predictions if provided
+            file_ann_obj.annotations = annotations
             predictions = []
             for pred_dict in file_ann_dict.get('predictions', []):
                 ann_type = AnnotationType(pred_dict['type'])
-                annotation_data = pred_dict['annotation']
+                annotation_data = pred_dict['value']
                 if ann_type == AnnotationType.BOX:
                     annotation_obj = Box(**annotation_data)
                 elif ann_type == AnnotationType.MASK:
@@ -345,39 +425,109 @@ class Dataset(Base):
                 else:
                     raise ValueError(f"Unsupported annotation type: {ann_type}")
 
-                link_data = pred_dict.get('link_to', {})
+                link_data = pred_dict.get('link', {})
                 link_instance = Link(**link_data) if link_data else Link()
                 
                 predictions.append(Annotation(
                     id=pred_dict['id'],
                     label_id=pred_dict['label_id'],
                     type=ann_type,
-                    annotation=annotation_obj,
+                    value=annotation_obj,
                     link=link_instance,
                     confidence=pred_dict['confidence'],
                     iou=pred_dict.get('iou', 0.0)
                 ))
-            files.append(FileAnnotations(
-                file=file_obj,
-                annotations=annotations,
-                predictions=predictions
-            ))
+            file_ann_obj.predictions = predictions
+            files.append(file_ann_obj)
         return cls(labels=labels, files=files)
 
     @classmethod
     def load(cls, file_path: str) -> 'Dataset':
-        """
-        Load a JSON file from the given file path and return a Dataset instance.
-        """
         with open(file_path, 'r') as f:
             data = json.load(f)
         return cls.from_dict(data)
     
     @property
     def base_path(self) -> str:
-        """
-        Get the base path of the dataset.
-        """
         all_files = [file_ann.path for file_ann in self.files]
         common_prefix = os.path.commonprefix(all_files)
         return os.path.dirname(common_prefix)
+    
+    def get_labels(self) -> List[str]:
+        return [label.id for label in self.labels]
+    
+    def label_to_index(self, label_id: str):
+        for label in self.labels:
+            if label.id == label_id:
+                return int(label.index)
+    
+    def to_yolo(self, **kwargs):
+        to_segmentation = kwargs.get('to_segmentation', False)
+        to_object_detection = kwargs.get('to_object_detection', False)
+        merge_boxes = kwargs.get('merge_boxes', False)
+        target_classes = kwargs.get('target_classes', ['all'])
+        
+        n_kpts = 0
+        image_to_labels = {}
+        base_prefix = self.base_path
+        for file in self.files:
+            file.assign_keypoints()
+            file_path = file.relative_path(base_prefix)
+            logger.info(f'Processing file {file_path}')
+            if file_path not in image_to_labels:
+                image_to_labels[file_path] = []
+            
+            height = file.height
+            width = file.width
+            
+            keypoints = file.get_annotations_by_type(AnnotationType.KEYPOINT)
+            if len(keypoints) > 0:
+                if n_kpts == 0:
+                    n_kpts = len(keypoints)
+                elif len(keypoints) != n_kpts:
+                    raise Exception(f'Inconsistent number of keypoints expected {n_kpts} found {len(keypoints)}')
+                
+            for annotation in file.annotations:
+                logger.info(f'Processing annotation {annotation.id}')
+                if target_classes[0] != 'all' and annotation.label_id not in target_classes:
+                    continue
+                
+                if annotation.type == AnnotationType.BOX and to_segmentation:
+                    converted_value = annotation.value.to_mask()
+                    annotation.value = converted_value
+                    annotation.type = AnnotationType.MASK
+                    logger.info(f'Converted annotation {annotation.id} of type {annotation.type} to mask')
+                
+                elif annotation.type == AnnotationType.MASK and annotation.value.type == MaskType.BITMASK and to_object_detection:
+                    if not merge_boxes:
+                        converted_value = annotation.value.to_box()
+                        annotation.value = converted_value
+                        annotation.type = AnnotationType.BOX
+                    else:
+                        for annot in annotation.value.to_box(merge_boxes=True):
+                            instance = [self.label_to_index(annotation.label_id)] + np.array(annot.to_yolo(height, width)).flatten().tolist()
+                            image_to_labels[file_path].append(instance)
+                    logger.info(f'Converted annotation {annotation.id} of type {annotation.type} to box')
+                
+                elif annotation.type == AnnotationType.MASK and annotation.value.type == MaskType.POLYGON and to_object_detection:
+                    converted_value = annotation.value.to_box()
+                    annotation.value = converted_value
+                    annotation.type = AnnotationType.BOX
+                    logger.info(f'Converted annotation {annotation.id} of type {annotation.type} to box')
+                
+                converted_annotations = annotation.value.to_yolo(height, width)
+                logger.info(f'Converted annotations {len(converted_annotations)} to YOLO format')
+                label_index = self.label_to_index(annotation.label_id)
+                
+                for annot in converted_annotations:
+                    instance = [label_index] + np.array(annot).flatten().tolist()
+                    image_to_labels[file_path].append(instance)
+
+
+        return dict(
+            image_labels = image_to_labels,
+            class_map = {
+                label.index : label.id for label in self.labels
+            },
+            n_kpts = n_kpts
+        )

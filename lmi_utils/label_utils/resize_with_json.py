@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-def resize_shapes(shapes, rx, ry):
+def resize_shapes(shapes, h, w):
     """resize shapes in-place
 
     Args:
@@ -25,9 +25,11 @@ def resize_shapes(shapes, rx, ry):
         ry (float): resize ratio in y direction
     """
     for annot in shapes:
-        annot.resize_by_scale(rx,ry)
+        annot.value = annot.value.resize(h,w)
+    
+    return shapes
 
-def resize_imgs_with_csv(path_imgs, path_json, output_imsize, path_out, save_bg_images, recursive):
+def resize_imgs_with_json(path_imgs, path_json, output_imsize, path_out, save_bg_images, recursive):
     """
     resize images and its annotations with a csv file
     if the aspect ratio changes, it will generate warnings.
@@ -40,6 +42,8 @@ def resize_imgs_with_csv(path_imgs, path_json, output_imsize, path_out, save_bg_
     """
     
     dataset = Dataset.load(path_json)
+    for file in dataset.files:
+        logger.info(f'processing {file.path}')
     base_prefix = dataset.base_path
     cnt_bg = 0
     # files = get_relative_paths(path_imgs, recursive)
@@ -56,8 +60,6 @@ def resize_imgs_with_csv(path_imgs, path_json, output_imsize, path_out, save_bg_
             logger.info(f'{im_name}: wh of [{w},{h}] has no labels')
         else:
             logger.info(f'{im_name}: wh of [{w},{h}]')
-        
-        
         
         # resize image
         tw,th = output_imsize
@@ -78,10 +80,12 @@ def resize_imgs_with_csv(path_imgs, path_json, output_imsize, path_out, save_bg_
         out_name = os.path.splitext(im_name)[0] + f'_resized_{tw}x{th}' + '.png'
         logger.info(f'write to {out_name}')
         cv2.imwrite(os.path.join(path_out,out_name), im2)
-        f.update_file(File(path=os.path.join(path_out,out_name), width=tw, height=th))
+        im2_h, im2_w = im2.shape[:2]
+        f.update_file(File(path=os.path.join(path_out,out_name), width=im2_w, height=im2_h, id=f.id))
         
         # resize shapes
-        resize_shapes(f.annotations,rx,ry)
+        shapes = resize_shapes(f.annotations,h=im2_h,w=im2_w)
+        f.annotations = shapes
     if cnt_bg:
         logger.info(f'found {cnt_bg} images with no labels. These images will be used as background training data in YOLO')
     return dataset
@@ -92,7 +96,7 @@ if __name__=='__main__':
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument('--path_imgs', '-i', required=True, help='the path to images')
-    ap.add_argument('--path_csv', default='labels.csv', help='[optinal] the path of a csv file that corresponds to path_imgs, default="labels.csv" in path_imgs')
+    ap.add_argument('--path_csv', default='labels.json', help='[optinal] the path of a csv file that corresponds to path_imgs, default="labels.json" in path_imgs')
     ap.add_argument('--width', type=int, default=None, help='the output image width, default=None')
     ap.add_argument('--height', type=int, default=None, help='the output image height, default=None')
     ap.add_argument('--path_out', '-o', required=True, help='the path to resized images')
@@ -106,7 +110,7 @@ if __name__=='__main__':
     
     path_imgs = args['path_imgs']
     path_out = args['path_out']
-    path_csv = args['path_csv'] if args['path_csv']!='labels.csv' else os.path.join(path_imgs, args['path_csv'])
+    path_csv = args['path_csv'] if args['path_csv']!='labels.json' else os.path.join(path_imgs, args['path_csv'])
     
     #check if annotation exists
     if not os.path.isfile(path_csv):
@@ -118,7 +122,9 @@ if __name__=='__main__':
         os.makedirs(path_out)
 
     #resize images with annotation csv file
-    fname_to_shapes = resize_imgs_with_csv(path_imgs, path_csv, output_imsize, path_out, args['bg'], args['recursive'])
+    dataset = resize_imgs_with_json(path_imgs, path_csv, output_imsize, path_out, args['bg'], args['recursive'])
+    
+    dataset.save(os.path.join(path_out, 'labels.json'))
 
     #write csv file
-    csv_utils.write_to_csv(fname_to_shapes, os.path.join(path_out,'labels.csv'), overwrite=not args['append'])
+    # csv_utils.write_to_csv(fname_to_shapes, os.path.join(path_out,'labels.json'), overwrite=not args['append'])
