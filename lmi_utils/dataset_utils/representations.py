@@ -9,8 +9,6 @@ import os
 import numpy as np
 import logging
 from label_utils.bbox_utils import rotate
-import cv2
-import uuid  # used to generate unique annotation ids
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -374,8 +372,6 @@ class Dataset(Base):
         files = []
         for file_ann_dict in data.get('files', []):
             # Create File instance
-            tmp = {k: v for k, v in file_ann_dict.items() if k in ['id', 'path', 'height', 'width']}
-            file_obj = File(**tmp)
             annotations = []
             for ann_dict in file_ann_dict.get('annotations', []):
                 ann_type = AnnotationType(ann_dict['type'])
@@ -406,7 +402,6 @@ class Dataset(Base):
                     confidence=ann_dict['confidence'],
                     iou=ann_dict.get('iou', 0.0)
                 ))
-            file_ann_obj.annotations = annotations
             predictions = []
             for pred_dict in file_ann_dict.get('predictions', []):
                 ann_type = AnnotationType(pred_dict['type'])
@@ -437,7 +432,10 @@ class Dataset(Base):
                     confidence=pred_dict['confidence'],
                     iou=pred_dict.get('iou', 0.0)
                 ))
-            file_ann_obj.predictions = predictions
+            file_ann_obj = FileAnnotations(
+                file=File(id=file_ann_dict['id'], path=file_ann_dict['path'], height=file_ann_dict['height'], width=file_ann_dict['width']),
+                annotations=annotations
+            )
             files.append(file_ann_obj)
         return cls(labels=labels, files=files)
 
