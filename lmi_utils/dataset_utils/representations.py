@@ -153,19 +153,19 @@ class Mask(Base):
         return self
 
     def to_numpy(self):
-        if self.mask.type == MaskType.BITMASK:
+        if self.type == MaskType.BITMASK:
             return rle2mask(self.mask, self.h, self.w)
-        elif self.mask.type == MaskType.POLYGON:
+        elif self.type == MaskType.POLYGON:
             return np.array(self.mask)
     
     def coords(self):
-        if type == MaskType.BITMASK:
+        if self.type == MaskType.BITMASK:
             mask = self.to_numpy()
             mask = np.where(mask > 0)
             return mask[0].tolist(), mask[1].tolist()
-        elif type == MaskType.POLYGON:
+        elif self.type == MaskType.POLYGON:
             mask = np.array(self.mask)
-            return self.mask[:,0].tolist(), self.mask[:,1].tolist()
+            return mask[:,0].tolist(), mask[:,1].tolist()
         
 
 @dataclass
@@ -213,6 +213,7 @@ class File(Base):
     height: int = 0
     width: int = 0
 
+@dataclass
 class FileAnnotations(Base):
     id: str  # File ID
     path: str  # File path
@@ -288,8 +289,9 @@ class Dataset(Base):
         # Parse files and their annotations
         files = []
         for file_ann_dict in data.get('files', []):
-            # Create File instance (assuming the file info is under key 'file')
-            file_obj = File(**file_ann_dict['file'])
+            # Create File instance
+            tmp = {k: v for k, v in file_ann_dict.items() if k in ['id', 'path', 'height', 'width']}
+            file_obj = File(**tmp)
             annotations = []
             for ann_dict in file_ann_dict.get('annotations', []):
                 # Convert annotation type from string to enum
