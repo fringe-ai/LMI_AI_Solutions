@@ -231,7 +231,7 @@ class Mask(Base):
             return mask[1].tolist(), mask[0].tolist()
         elif self.type == MaskType.POLYGON:
             mask = np.array(self.mask)
-            return self.mask[:,0].tolist(), self.mask[:,1].tolist()
+            return mask[:,0].tolist(), mask[:,1].tolist()
     
     def to_polygon(self):
         if self.type == MaskType.BITMASK:
