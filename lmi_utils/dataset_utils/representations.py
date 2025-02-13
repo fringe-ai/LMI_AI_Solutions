@@ -103,8 +103,11 @@ class Box(Base):
     
     def resize(self, orig_h: int, orig_w: int, new_h: int, new_w: int):
         """Resize box coordinates given original and new image dimensions."""
+            
         if orig_w <= 0 or orig_h <= 0:
             raise ValueError("Original dimensions must be positive")
+        if new_w <= 0 and new_h <= 0:
+            raise ValueError("New dimensions must be positive")
         rx = new_w/orig_w if new_w is not None else 1
         ry = new_h/orig_h if new_h is not None else 1
         self.x_min *= rx
