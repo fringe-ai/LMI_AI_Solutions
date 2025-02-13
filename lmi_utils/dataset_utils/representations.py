@@ -183,8 +183,8 @@ class Mask(Base):
     def resize(self, orig_h: int, orig_w: int, new_h: int, new_w: int):
         assert orig_h > 0 and orig_w > 0, "Original height and width must be positive"
         assert orig_h == self.h and orig_w == self.w, "Original dimensions must match mask dimensions"
-        rx = new_w/self.w if new_w is not None else 1
-        ry = new_h/self.h if new_h is not None else 1
+        rx = new_w/orig_w if new_w is not None else 1
+        ry = new_h/orig_w if new_h is not None else 1
             
         if self.type == MaskType.BITMASK:
             if isinstance(self.mask, str):
