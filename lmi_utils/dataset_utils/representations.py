@@ -173,8 +173,9 @@ class Mask(Base):
                 assert mask.shape == (self.h, self.w), "mask shape must match height and width"
                 self.mask = mask2rle(mask)
         elif type == MaskType.POLYGON:
-            assert isinstance(mask, list), "mask must be a list of lists"
-
+            if isinstance(mask, np.ndarray):
+                self.mask = mask.tolist()
+            
     
     def resize(self, orig_h: int, orig_w: int, new_h: int, new_w: int):
         assert orig_h > 0 and orig_w > 0, "Original height and width must be positive"
