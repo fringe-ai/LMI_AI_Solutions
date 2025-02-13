@@ -29,9 +29,6 @@ def plot_shape(shape, im, color_map):
             rotated_rect = np.array([[x1,y1],[x2,y1],[x2,y2],[x1,y2]])
         plot_one_polygon(np.array([rotated_rect]), im, label=shape.label_id, color=color_map[shape.label_id])
     elif shape.type == AnnotationType.MASK:
-        # pts = np.array([[x,y] for x,y in zip(shape.X,shape.Y)])
-        # pts = pts.reshape((-1, 1, 2)).astype(int)
-        
         x,y = shape.value.coords()
         if shape.value.type == MaskType.POLYGON:
             pts = np.array([[x,y]]).reshape((-1, 1, 2)).astype(int)
@@ -53,26 +50,16 @@ if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('-i','--path_imgs', required=True, help='the path to the input image folder')
     ap.add_argument('-o','--path_out', required=True, help='the path to the output folder')
-    ap.add_argument('--path_csv', default='labels.json', help='[optinal] the path of a csv file that corresponds to path_imgs, default="labels.json" in path_imgs')
-    ap.add_argument('--class_map_json', default=None, help='[optinal] the path of a class map json file')
+    ap.add_argument('--path_json', default='labels.json', help='[optinal] the path of a csv file that corresponds to path_imgs, default="labels.json" in path_imgs')
     args = vars(ap.parse_args())
 
     path_imgs = args['path_imgs']
-    path_csv = args['path_csv'] if args['path_csv']!='labels.json' else os.path.join(path_imgs, args['path_csv'])
+    path_json = args['path_json'] if args['path_json']!='labels.json' else os.path.join(path_imgs, args['path_json'])
     output_path = args['path_out']
-    # if args['class_map_json']:
-    #     with open(args['class_map_json']) as f:
-    #         class_map = json.load(f)
-    #     logger.info(f'loaded class map: {class_map}')
-    # else:
-    #     class_map = None
-
-    # if not os.path.isfile(path_csv):
-    #     raise Exception(f'Not found file: {path_csv}')
     assert path_imgs!=output_path, 'output path must be different with input path'
-    # fname_to_shape, class_map = load_csv(path_csv, path_imgs, class_map)
+    # fname_to_shape, class_map = load_csv(path_json, path_imgs, class_map)
     
-    dataset = Dataset.load(path_csv)
+    dataset = Dataset.load(path_json)
     base_prefix = dataset.base_path
     
     # init color map
@@ -80,7 +67,8 @@ if __name__ == '__main__':
     for cls in dataset.get_labels():
         logger.info(f'CLASS: {cls}')
         color_map[cls] = tuple([random.randint(0,255) for _ in range(3)])
-    os.makedirs(output_path, exist_ok=True)
+    if not os.path.exists(output_path):
+        os.makedirs(output_path)
     
     for f in dataset.files:
         file_path = f.relative_path(base_prefix)

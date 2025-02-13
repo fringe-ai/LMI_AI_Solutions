@@ -70,10 +70,6 @@ def pad_image_with_json(input_path, json_path, output_path, output_imsize, save_
         if is_warning:
             cnt_warnings += 1
 
-        # #modify the image name 
-        # for shape in shapes:
-        #     shape.im_name = out_name
-        # output_shapes[out_name] = shapes
         height = im_out.shape[0]
         width = im_out.shape[1]
         f.update_file(File(path=output_file, width=width, height=height, id=f.id))
@@ -97,7 +93,7 @@ def clip_shapes(shapes, W, H):
         is_del = 0
         if shape.type == AnnotationType.BOX:
             
-            box = shape.value.to_numpy()
+            box = shape.value.to_numpy()[:-1]
             new_box = np.clip(box, a_min=0, a_max=[W,H,W,H])
             
             if np.all(new_box==0) or new_box[0]==new_box[2] or new_box[1]==new_box[3]:
@@ -133,13 +129,13 @@ def clip_shapes(shapes, W, H):
                     shape.value = Mask(type=MaskType.POLYGON, mask=[(x,y) for x,y in zip(new_X,new_Y)])
                 
         elif shape.type == AnnotationType.KEYPOINT:
-            x,y = shape.value.x, shape.value.y
+            x,y, _= shape.value.coords()
             if x<0 or x>W or y<0 or y>H:
                 is_del = 1
                 logger.warning(f'keypoint ({x},{y}) is outside of the size [{W},{H}]')
                 delete_ids.append(shape.id)
             else:
-                shape.value.x, shape.value.y = x,y
+                shape.value = Point(x=x,y=y,z=0)
                 
         if is_del:
             is_warning = True

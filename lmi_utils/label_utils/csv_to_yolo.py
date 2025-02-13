@@ -243,6 +243,8 @@ def write_txts(fname_to_rows, path_txts):
         if '/' in fname:
             fname = os.path
         txt_file = os.path.join(path_txts, fname)
+        if '.txt' not in txt_file:
+            txt_file += '.txt'
         with open(txt_file, 'w') as f:
             for shape in fname_to_rows[fname]:
                 class_id = shape[0]

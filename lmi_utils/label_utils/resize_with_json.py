@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-def resize_shapes(shapes, h, w):
+def resize_shapes(shapes, orig_h: int, orig_w: int, new_h: int, new_w: int):
     """resize shapes in-place
 
     Args:
@@ -25,7 +25,7 @@ def resize_shapes(shapes, h, w):
         ry (float): resize ratio in y direction
     """
     for annot in shapes:
-        annot.value = annot.value.resize(h,w)
+        annot.value = annot.value.resize(orig_h, orig_w, new_h, new_w)
     
     return shapes
 
@@ -84,7 +84,7 @@ def resize_imgs_with_json(path_imgs, path_json, output_imsize, path_out, save_bg
         f.update_file(File(path=os.path.join(path_out,out_name), width=im2_w, height=im2_h, id=f.id))
         
         # resize shapes
-        shapes = resize_shapes(f.annotations,h=im2_h,w=im2_w)
+        shapes = resize_shapes(f.annotations,orig_h=h, orig_w=w, new_h=im2_h, new_w=im2_w)
         f.annotations = shapes
     if cnt_bg:
         logger.info(f'found {cnt_bg} images with no labels. These images will be used as background training data in YOLO')

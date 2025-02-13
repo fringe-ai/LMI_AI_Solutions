@@ -57,8 +57,7 @@ def lst_to_shape(result:dict, fname:str, load_confidence=False):
         h,w = result['original_height'],result['original_width']
         img = decode_rle(rle).reshape(h,w,4)[:,:,3]
         mask = img > 128
-        mask_rle = mask2rle(mask)
-        return Mask(mask=mask_rle,type=MaskType.BITMASK, h=h, w=w), label, conf, AnnotationType.MASK
+        return Mask(mask=mask,type=MaskType.BITMASK, h=h, w=w), label, conf, AnnotationType.MASK
     elif result_type=='keypointlabels':
         dt = result['value']
         x,y = dt['x']/100*result['original_width'],dt['y']/100*result['original_height']

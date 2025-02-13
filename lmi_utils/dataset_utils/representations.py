@@ -9,6 +9,8 @@ import os
 import numpy as np
 import logging
 from label_utils.bbox_utils import rotate
+import cv2
+import uuid  # used to generate unique annotation ids
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -57,6 +59,30 @@ class Base:
 
 @dataclass
 class Box(Base):
+    """
+    A class representing a bounding box with coordinates and angle.
+    Attributes:
+        x_min (float): The minimum x-coordinate of the box.
+        y_min (float): The minimum y-coordinate of the box.
+        x_max (float): The maximum x-coordinate of the box.
+        y_max (float): The maximum y-coordinate of the box.
+        angle (float): The rotation angle of the box.
+    Methods:
+        __init__(x_min, y_min, x_max, y_max, angle):
+            Initializes the Box object with given coordinates and angle.
+        resize(orig_h: int, orig_w: int, new_h: int, new_w: int):
+            Resize box coordinates given original and new image dimensions.
+        pad(pad_h=0, pad_w=0, pl=0, pt=0):
+            Pad the box coordinates by given padding values.
+        to_numpy():
+            Convert the box coordinates and angle to a numpy array.
+        coords():
+            Return the box coordinates and angle as a tuple.
+        to_yolo(h, w):
+            Convert the box coordinates to YOLO format.
+        to_mask(**kwargs):
+            Convert the box coordinates to a mask representation.
+    """
     x_min: float
     y_min: float
     x_max: float
@@ -75,15 +101,16 @@ class Box(Base):
         if self.y_min > self.y_max:
             raise ValueError("y_min must be less than y_max")
     
-    def resize(self, h=None, w=None):
-        if h is None and w is None:
-            raise Exception('Both height and width cannot be None')
-        rx = w/self.w if w is not None else 1
-        ry = h/self.h if h is not None else 1
-        self.x_max = self.x_max * rx
-        self.x_min = self.x_min * rx
-        self.y_max = self.y_max * ry
-        self.y_min = self.y_min * ry
+    def resize(self, orig_h: int, orig_w: int, new_h: int, new_w: int):
+        """Resize box coordinates given original and new image dimensions."""
+        if orig_w <= 0 or orig_h <= 0:
+            raise ValueError("Original dimensions must be positive")
+        rx = new_w/orig_w if new_w is not None else 1
+        ry = new_h/orig_h if new_h is not None else 1
+        self.x_min *= rx
+        self.x_max *= rx
+        self.y_min *= ry
+        self.y_max *= ry
         return self
     
     def pad(self, pad_h=0, pad_w=0, pl=0, pt=0):
@@ -135,7 +162,7 @@ class Mask(Base):
     h: int = 0
     w: int = 0
 
-    def __init__(self, type: MaskType, mask: Union[str, List[List[float]]], h: int = 0, w: int = 0):
+    def __init__(self, type: MaskType, mask: Union[np.ndarray,str, List[List[float]]], h: int = 0, w: int = 0):
         self.type = type
         self.mask = mask
         self.h = h
@@ -149,11 +176,11 @@ class Mask(Base):
             assert isinstance(mask, list), "mask must be a list of lists"
 
     
-    def resize(self, h=None, w=None):
-        if h is None and w is None:
-            raise Exception('Both height and width cannot be None')
-        rx = w/self.w if w is not None else 1
-        ry = h/self.h if h is not None else 1
+    def resize(self, orig_h: int, orig_w: int, new_h: int, new_w: int):
+        assert orig_h > 0 and orig_w > 0, "Original height and width must be positive"
+        assert orig_h == self.h and orig_w == self.w, "Original dimensions must match mask dimensions"
+        rx = new_w/self.w if new_w is not None else 1
+        ry = new_h/self.h if new_h is not None else 1
             
         if self.type == MaskType.BITMASK:
             if isinstance(self.mask, str):
@@ -171,14 +198,14 @@ class Mask(Base):
             self.mask = mask.tolist()
         return self
     
-    def pad(self, ph=0, pw=0, pt=0, pl=0):
+    def pad(self, pad_h=0, pad_w=0, pl=0, pt=0):
         if self.type == MaskType.BITMASK:
             if isinstance(self.mask, str):
                 mask = rle2mask(self.mask, self.h, self.w)
-                mask, _, _, _, _ = fit_array_to_size(mask, ph, pw)
+                mask, _, _, _, _ = fit_array_to_size(mask, pad_w, pad_h)
                 self.mask = mask2rle(mask)
-                self.h = ph
-                self.w = pw
+                self.h = pad_h
+                self.w = pad_w
                 
         elif self.type == MaskType.POLYGON:
             mask = np.array(self.mask)
@@ -197,31 +224,80 @@ class Mask(Base):
         if self.type == MaskType.BITMASK:
             mask = self.to_numpy()
             mask = np.where(mask > 0)
-            return mask[0].tolist(), mask[1].tolist()
+            return mask[1].tolist(), mask[0].tolist()
         elif self.type == MaskType.POLYGON:
             mask = np.array(self.mask)
-            return mask[:,0].tolist(), mask[:,1].tolist()
+            return self.mask[:,0].tolist(), self.mask[:,1].tolist()
+    
+    def to_polygon(self):
+        if self.type == MaskType.BITMASK:
+            mask = self.to_numpy()
+            contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        elif self.type == MaskType.POLYGON:
+            contours = self.to_numpy()
+        return contours
+    
+    def to_yolo(self, h, w):
+        instances = []
+        if self.type == MaskType.BITMASK:
+            polygons = self.to_polygon()
+            for polygon in polygons:
+                instances.append([
+                    [pt[0] / w, pt[1] / h] for pt in polygon.reshape(-1, 2)
+                ])
+        elif self.type == MaskType.POLYGON:
+            instances.append([
+                [pt[0] / w, pt[1] / h] for pt in self.mask
+            ])
+        return instances
+    
+    def to_box(self, **kwargs):
+        if self.type == MaskType.BITMASK:
+            if kwargs.get('merge_boxes', False):
+                mask = self.to_numpy()
+                mask = np.where(mask > 0)
+                x, y, w_box, h_box = cv2.boundingRect(mask)
+                return Box(x_min=x, y_min=y, x_max=x+w_box, y_max=y+h_box, angle=0)
+            else:
+                polygons = self.to_polygon()
+                boxes = []
+                for polygon in polygons:
+                    x, y, w_box, h_box = cv2.boundingRect(polygon)
+                    boxes.append(Box(x_min=x, y_min=y, x_max=x+w_box, y_max=y+h_box, angle=0))
+                return boxes
+        elif self.type == MaskType.POLYGON:
+            mask = np.array(self.mask)
+            x, y, w_box, h_box = cv2.boundingRect(mask)
+            return Box(x_min=x, y_min=y, x_max=x+w_box, y_max=y+h_box, angle=0)
+        else:
+            raise Exception('Unsupported mask type')
+    
+    def to_mask(self, **kwargs):
+        raise Exception('Cannot convert mask to mask')
+    
         
-
 @dataclass
 class Point(Base):
     x: float
     y: float
     z: float
     
-    def resize(self, h=None, w=None, z=None):
-        if h is None and w is None:
-            raise Exception('Both height and width cannot be None')
-        rx = w/self.w if w is not None else 1
-        ry = h/self.h if h is not None else 1
-        rz = z/self.z if z is not None else 1
+    def __init__(self, x: float, y: float, z: float):
+        self.x = x
+        self.y = y
+        self.z = z
+    
+    def resize(self, orig_h: int, orig_w: int, new_h: int, new_w: int):
+        rx = new_w/orig_w if new_w is not None else 1
+        ry = new_h/orig_h if new_h is not None else 1
+        rz = 1
         self.x = self.x * rx
         self.y = self.y * ry
         if self.z > 0:
             self.z = self.z * rz
         return self
     
-    def pad(self, ph=0, pw=0, pt=0, pl=0):
+    def pad(self, pad_h=0, pad_w=0, pl=0, pt=0):
         self.x += pl
         self.y += pt
         return self
@@ -265,8 +341,14 @@ class Annotation(Base):
 class File(Base):
     id: str
     path: str
-    height: int = 0
-    width: int = 0
+    height: int
+    width: int 
+    
+    def __init__(self, id: str, path: str, height: int = 0, width: int = 0):
+        self.id = id
+        self.path = path
+        self.height = height
+        self.width = width
 
 @dataclass
 class FileAnnotations(Base):
@@ -291,9 +373,6 @@ class FileAnnotations(Base):
     
     def relative_path(self, base_path: str) -> str:
         return os.path.relpath(self.path, base_path)
-    
-    def get_filename(self) -> str:
-        return os.path.basename(self.path)
     
     @property
     def has_annotations(self) -> bool:
@@ -345,12 +424,9 @@ class FileAnnotations(Base):
             x_min, y_min, x_max, y_max, angle = box.coords()
             return x_min <= x <= x_max and y_min <= y <= y_max
         
+        keypoints = self.get_annotations_by_type(AnnotationType.KEYPOINT)
         boxes = self.get_annotations_by_type(AnnotationType.BOX)
-        for annot in self.annotations:
-            if annot.type == AnnotationType.KEYPOINT:
-                keypoint = annot
-            else:
-                continue
+        for keypoint in keypoints:
             assigned = False
             for box in boxes:
                 if is_inside_box(keypoint.value.coords(), box.value.coords()):
@@ -371,7 +447,12 @@ class Dataset(Base):
         labels = [Label(**label_dict) for label_dict in data.get('labels', [])]
         files = []
         for file_ann_dict in data.get('files', []):
-            # Create File instance
+            file_ann_obj = FileAnnotations(File(
+                id=file_ann_dict['id'],
+                path=file_ann_dict['path'],
+                height=file_ann_dict['height'],
+                width=file_ann_dict['width']
+            ))
             annotations = []
             for ann_dict in file_ann_dict.get('annotations', []):
                 ann_type = AnnotationType(ann_dict['type'])
@@ -402,6 +483,7 @@ class Dataset(Base):
                     confidence=ann_dict['confidence'],
                     iou=ann_dict.get('iou', 0.0)
                 ))
+            file_ann_obj.annotations = annotations
             predictions = []
             for pred_dict in file_ann_dict.get('predictions', []):
                 ann_type = AnnotationType(pred_dict['type'])
@@ -432,10 +514,7 @@ class Dataset(Base):
                     confidence=pred_dict['confidence'],
                     iou=pred_dict.get('iou', 0.0)
                 ))
-            file_ann_obj = FileAnnotations(
-                file=File(id=file_ann_dict['id'], path=file_ann_dict['path'], height=file_ann_dict['height'], width=file_ann_dict['width']),
-                annotations=annotations
-            )
+            file_ann_obj.predictions = predictions
             files.append(file_ann_obj)
         return cls(labels=labels, files=files)
 
