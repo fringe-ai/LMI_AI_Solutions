@@ -29,9 +29,8 @@ def plot_shape(shape, im, color_map):
             rotated_rect = np.array([[x1,y1],[x2,y1],[x2,y2],[x1,y2]])
         plot_one_polygon(np.array([rotated_rect]), im, label=shape.label_id, color=color_map[shape.label_id])
     elif shape.type == AnnotationType.MASK:
-        x,y = shape.value.coords()
         if shape.value.type == MaskType.POLYGON:
-            pts = np.array([[x,y]]).reshape((-1, 1, 2)).astype(int)
+            pts = shape.value.to_numpy().reshape((-1, 1, 2)).astype(int)
             plot_one_polygon(pts, im, label=shape.label_id, color=color_map[shape.label_id])
         elif shape.value.type == MaskType.BITMASK:
             x,y = shape.value.coords()
