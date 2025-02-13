@@ -51,6 +51,7 @@ def read_csv(csv_path:str, img_dir:str):
         
         label_map = {}
         file_map = {}
+        annot_id = 0
         for i in range(0,len(reader),2):
             row1 = reader[i]
             row2 = reader[i+1]
@@ -85,7 +86,8 @@ def read_csv(csv_path:str, img_dir:str):
                 file_map[fname] = FileAnnotations(file=file, annotations=[], predictions=[])
             if fname in file_map:
                 file = file_map[fname]
-                annot = Annotation(id=str(label_id),label_id=category,type=mtype,annotation=shape,confidence=conf,link=Link())
+                annot = Annotation(id=str(annot_id),label_id=category,type=mtype,value=shape,confidence=conf,link=Link())
+                annot_id += 1
                 file.annotations.append(annot)
             
     return label_map, file_map
@@ -100,7 +102,7 @@ def write_to_json(label_map:dict, file_map:dict, json_path:str):
         json_path (str): path to a json file
     """
     dataset = Dataset(labels=[], files=[])
-    dataset.labels = [Label(id=str(label_id), name=label_name) for label_name,label_id in label_map.items()]
+    dataset.labels = [Label(index=str(label_id), id=label_name) for label_name,label_id in label_map.items()]
     dataset.files = list(file_map.values())
     dataset.save(json_path)
     
